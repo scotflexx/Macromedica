@@ -1,14 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { 
   ArrowLeft, Bell, Settings, Search, Stethoscope, Calendar, FileText, Plus, 
-  Printer, Share, CreditCard, Droplets, Target, Activity, Zap 
+  Printer, Share, CreditCard, Droplets, Target, Activity, Zap,
+  StickyNote, FolderOpen, Trash2, Eye, Upload, Paperclip, ClipboardList
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { AppButton } from '../../components/dashboard/DashboardPrimitives'
-import { getPatientById, getConsultationsByPatient, getRdv } from '../../lib/api'
+import { getPatientById, getConsultationsByPatient, getRdv, getDocuments } from '../../lib/api'
 import { supabase } from '../../lib/supabase'
 import { useAppContext } from '../../context/AppContext'
 import { useNavigate } from 'react-router-dom'
+import { useCabinetId } from '../../hooks/useCabinetId'
 import { isValidTransition, RDV_STATUSES } from '../../lib/workflow'
 
 // ── Helpers ──
@@ -32,7 +34,9 @@ function formatDateFull(dateStr) {
 export default function PatientProfileView({ patientId, onBack }) {
   const { profile } = useAppContext()
   const navigate = useNavigate()
+  const { cabinetId } = useCabinetId()
   const [activeTab, setActiveTab] = useState('Historique')
+  const [notesText, setNotesText] = useState('')
 
   // ── Queries ──
   const { data: patient, isLoading: loadingPatient } = useQuery({
@@ -54,8 +58,33 @@ export default function PatientProfileView({ patientId, onBack }) {
     enabled: !!profile?.cabinet_id
   })
 
-  // Basic mock documents for timeline (can be wired to real API later)
-  const documents = []
+  // Ordonnances for this patient
+  const { data: ordonnances = [] } = useQuery({
+    queryKey: ['ordonnances', 'patient', patientId, cabinetId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('documents')
+        .select(`*, consultations (notes, date_consult)`)
+        .eq('patient_id', patientId)
+        .eq('type_document', 'ordonnance')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data || []
+    },
+    enabled: !!patientId && !!cabinetId
+  })
+
+  // All documents for this patient
+  const { data: documents = [] } = useQuery({
+    queryKey: ['documents', 'patient', patientId],
+    queryFn: () => getDocuments(patientId),
+    enabled: !!patientId
+  })
+
+  // Non-ordonnance documents (scans, reports, etc.)
+  const nonOrdonnanceDocs = useMemo(() => 
+    documents.filter(d => d.type_document !== 'ordonnance'),
+  [documents])
 
   // ── Computed Data ──
   const patientRdvs = useMemo(() => allRdvs.filter(r => r.patient_id === patientId), [allRdvs, patientId])
@@ -346,22 +375,28 @@ export default function PatientProfileView({ patientId, onBack }) {
             </div>
 
             <div className="flex gap-1 overflow-x-auto custom-scrollbar pb-2">
-              {['Informations', 'Historique', 'Consultations', 'Ordonnances', 'Facturation'].map(tab => (
+              {['Informations', 'Historique', 'Consultations', 'Ordonnances', 'Documents', 'Notes'].map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-5 py-2.5 rounded-[12px] text-[13px] font-bold transition-all whitespace-nowrap ${
+                  className={`px-5 py-2.5 rounded-[12px] text-[13px] font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
                     activeTab === tab 
                       ? 'bg-slate-900 text-white shadow-md' 
                       : 'text-slate-500 hover:bg-slate-100'
                   }`}
                 >
-                  {tab === 'Informations' && <span className="mr-2">ℹ️</span>}
-                  {tab === 'Historique' && <Activity className="w-4 h-4 inline-block mr-2 opacity-70" />}
-                  {tab === 'Consultations' && <Stethoscope className="w-4 h-4 inline-block mr-2 opacity-70" />}
-                  {tab === 'Ordonnances' && <FileText className="w-4 h-4 inline-block mr-2 opacity-70" />}
-                  {tab === 'Facturation' && <CreditCard className="w-4 h-4 inline-block mr-2 opacity-70" />}
+                  {tab === 'Informations' && <span>ℹ️</span>}
+                  {tab === 'Historique' && <Activity className="w-4 h-4 opacity-70" />}
+                  {tab === 'Consultations' && <Stethoscope className="w-4 h-4 opacity-70" />}
+                  {tab === 'Ordonnances' && <FileText className="w-4 h-4 opacity-70" />}
+                  {tab === 'Documents' && <FolderOpen className="w-4 h-4 opacity-70" />}
+                  {tab === 'Notes' && <StickyNote className="w-4 h-4 opacity-70" />}
                   {tab}
+                  {tab === 'Ordonnances' && ordonnances.length > 0 && (
+                    <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                      activeTab === tab ? 'bg-white/20 text-white' : 'bg-teal-50 text-teal-700'
+                    }`}>{ordonnances.length}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -549,10 +584,264 @@ export default function PatientProfileView({ patientId, onBack }) {
               </div>
             )}
             
-            {activeTab !== 'Historique' && activeTab !== 'Informations' && (
-              <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-                <FileText className="w-12 h-12 mb-4 opacity-20" />
-                <p className="font-medium text-[15px]">Module {activeTab} en cours de développement</p>
+            {/* ── CONSULTATIONS TAB ── */}
+            {activeTab === 'Consultations' && (
+              <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-[18px] font-bold text-slate-900">Historique des Consultations</h3>
+                  <span className="text-[13px] font-bold text-slate-400">{consultations.length} consultation{consultations.length !== 1 ? 's' : ''}</span>
+                </div>
+
+                {consultations.length === 0 ? (
+                  <div className="bg-white rounded-[24px] p-12 text-center border border-dashed border-slate-200">
+                    <Stethoscope className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                    <p className="text-[15px] font-semibold text-slate-500">Aucune consultation enregistrée</p>
+                    <p className="text-[13px] text-slate-400 mt-1">Les consultations apparaîtront ici automatiquement.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {consultations.map(c => {
+                      const isPaid = c.statut === 'paye'
+                      const isCredit = c.statut === 'credit'
+                      let parsedNotes = null
+                      try { parsedNotes = c.notes ? JSON.parse(c.notes) : null } catch(e) {}
+
+                      return (
+                        <div key={c.id} className="bg-white rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-shadow">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                                isCredit ? 'bg-rose-50 text-rose-500' : 'bg-teal-50 text-teal-600'
+                              }`}>
+                                <Stethoscope className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <h4 className="text-[15px] font-bold text-slate-900">{c.motif || 'Consultation'}</h4>
+                                <p className="text-[12px] text-slate-400 mt-0.5">{formatDateFull(c.date_consult)}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {c.montant && (
+                                <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${
+                                  isPaid ? 'bg-teal-50 text-teal-700' : isCredit ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-500'
+                                }`}>
+                                  {Number(c.montant).toLocaleString('fr-FR')} MAD
+                                </span>
+                              )}
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                isPaid ? 'bg-emerald-50 text-emerald-700' : isCredit ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-700'
+                              }`}>
+                                {isPaid ? 'Payé' : isCredit ? 'Impayé' : c.statut || 'En cours'}
+                              </span>
+                            </div>
+                          </div>
+                          {(c.notes || parsedNotes) && (
+                            <div className="ml-[52px] p-3 bg-slate-50 rounded-xl">
+                              <p className="text-[13px] text-slate-600 leading-relaxed">
+                                {parsedNotes?.diagnostic || parsedNotes?.motif || c.notes?.substring(0, 200)}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── ORDONNANCES TAB ── */}
+            {activeTab === 'Ordonnances' && (
+              <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-[18px] font-bold text-slate-900">Ordonnances</h3>
+                  <span className="text-[13px] font-bold text-slate-400">{ordonnances.length} ordonnance{ordonnances.length !== 1 ? 's' : ''}</span>
+                </div>
+
+                {ordonnances.length === 0 ? (
+                  <div className="bg-white rounded-[24px] p-12 text-center border border-dashed border-slate-200">
+                    <FileText className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                    <p className="text-[15px] font-semibold text-slate-500">Aucune ordonnance pour ce patient</p>
+                    <p className="text-[13px] text-slate-400 mt-1">Les ordonnances créées lors des consultations apparaîtront ici.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {ordonnances.map(doc => {
+                      let parsedData = {}
+                      try {
+                        if (doc.consultations?.notes) parsedData = JSON.parse(doc.consultations.notes)
+                      } catch(e) {}
+                      const meds = parsedData?.medicaments || []
+
+                      return (
+                        <div key={doc.id} className="bg-white rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-shadow group">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                                <ClipboardList className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <h4 className="text-[15px] font-bold text-slate-900">Ordonnance</h4>
+                                <p className="text-[12px] text-slate-400 mt-0.5">
+                                  {formatDateFull(doc.consultations?.date_consult || doc.created_at)}
+                                  {parsedData?.medecin && <span> · Dr. {parsedData.medecin}</span>}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-teal-50 hover:text-teal-600 transition-colors" title="Imprimer">
+                                <Printer className="w-4 h-4" />
+                              </button>
+                              <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" title="Voir">
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                          {meds.length > 0 && (
+                            <div className="ml-[52px] space-y-1.5">
+                              {meds.slice(0, 4).map((m, i) => (
+                                <div key={i} className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50">
+                                  <span className="w-5 h-5 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex-shrink-0">{i + 1}</span>
+                                  <div className="min-w-0">
+                                    <p className="text-[13px] font-semibold text-slate-800 truncate">{m.nom}</p>
+                                    <p className="text-[11px] text-slate-400">{m.posologie}{m.duree ? ` — ${m.duree}` : ''}</p>
+                                  </div>
+                                </div>
+                              ))}
+                              {meds.length > 4 && (
+                                <p className="text-[12px] text-slate-400 font-medium ml-7">+ {meds.length - 4} autre{meds.length - 4 > 1 ? 's' : ''} médicament{meds.length - 4 > 1 ? 's' : ''}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── DOCUMENTS / SCANS TAB ── */}
+            {activeTab === 'Documents' && (
+              <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-[18px] font-bold text-slate-900">Documents & Scans</h3>
+                  <button className="flex items-center gap-2 px-4 py-2 rounded-[14px] bg-teal-600 hover:bg-teal-700 text-white font-bold text-[13px] shadow-[0_4px_12px_rgba(13,148,136,0.2)] transition-all">
+                    <Upload className="w-4 h-4" /> Ajouter un document
+                  </button>
+                </div>
+
+                {nonOrdonnanceDocs.length === 0 ? (
+                  <div className="bg-white rounded-[24px] p-12 text-center border border-dashed border-slate-200">
+                    <FolderOpen className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                    <p className="text-[15px] font-semibold text-slate-500">Aucun document ou scan</p>
+                    <p className="text-[13px] text-slate-400 mt-1">Ajoutez des résultats d'analyses, radiographies ou autres documents médicaux.</p>
+                    <button className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-[14px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[13px] transition-colors">
+                      <Upload className="w-4 h-4" /> Télécharger un fichier
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {nonOrdonnanceDocs.map(doc => (
+                      <div key={doc.id} className="bg-white rounded-[20px] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-shadow flex items-center gap-3 group">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600 flex-shrink-0">
+                          <Paperclip className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[14px] font-semibold text-slate-900 truncate">{doc.nom || doc.type_document || 'Document'}</p>
+                          <p className="text-[12px] text-slate-400 mt-0.5">{formatDateFull(doc.created_at)}</p>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-slate-400 hover:text-teal-600 transition-colors">
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-slate-400 hover:text-rose-500 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── NOTES MÉDICALES TAB ── */}
+            {activeTab === 'Notes' && (
+              <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-[18px] font-bold text-slate-900">Notes Médicales</h3>
+                </div>
+
+                {/* Existing notes from patient record */}
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100 mb-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-violet-50 flex items-center justify-center text-violet-500">
+                      <StickyNote className="w-5 h-5" />
+                    </div>
+                    <h4 className="text-[15px] font-bold text-slate-900">Notes du dossier</h4>
+                  </div>
+                  <div className="p-4 rounded-[16px] bg-slate-50 border border-slate-100">
+                    <p className="text-[14px] text-slate-700 leading-relaxed whitespace-pre-wrap">
+                      {patient.notes || 'Aucune note enregistrée dans le dossier du patient.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Antécédents */}
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100 mb-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-500">
+                      <ClipboardList className="w-5 h-5" />
+                    </div>
+                    <h4 className="text-[15px] font-bold text-slate-900">Antécédents médicaux</h4>
+                  </div>
+                  <div className="p-4 rounded-[16px] bg-slate-50 border border-slate-100">
+                    <p className="text-[14px] text-slate-700 leading-relaxed whitespace-pre-wrap">
+                      {patient.antecedents || 'Aucun antécédent particulier.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Allergies */}
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100 mb-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-500">
+                      <span className="text-[16px]">⚠️</span>
+                    </div>
+                    <h4 className="text-[15px] font-bold text-slate-900">Allergies</h4>
+                  </div>
+                  <div className={`p-4 rounded-[16px] border ${
+                    patient.allergies ? 'bg-rose-50/50 border-rose-100' : 'bg-slate-50 border-slate-100'
+                  }`}>
+                    <p className={`text-[14px] leading-relaxed whitespace-pre-wrap ${
+                      patient.allergies ? 'text-rose-800 font-semibold' : 'text-slate-500'
+                    }`}>
+                      {patient.allergies || 'Aucune allergie signalée.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Quick note textarea */}
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-600">
+                      <Plus className="w-5 h-5" />
+                    </div>
+                    <h4 className="text-[15px] font-bold text-slate-900">Ajouter une note rapide</h4>
+                  </div>
+                  <textarea
+                    value={notesText}
+                    onChange={(e) => setNotesText(e.target.value)}
+                    placeholder="Écrivez une observation, un rappel ou un commentaire médical..."
+                    className="w-full h-32 p-4 rounded-[16px] bg-slate-50 border border-slate-200 text-[14px] text-slate-700 outline-none resize-none focus:border-teal-400 focus:ring-4 focus:ring-teal-50 transition-all placeholder:text-slate-400"
+                  />
+                  <div className="flex justify-end mt-3">
+                    <button className="px-5 py-2.5 rounded-[14px] bg-teal-600 hover:bg-teal-700 text-white font-bold text-[13px] shadow-[0_4px_12px_rgba(13,148,136,0.2)] transition-all flex items-center gap-2">
+                      <Plus className="w-4 h-4" /> Enregistrer la note
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

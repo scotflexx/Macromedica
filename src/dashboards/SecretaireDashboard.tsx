@@ -256,12 +256,12 @@ const SecretaireDashboard = memo(() => {
 
         /* GRIDS */
         .sec-layout {
-          display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+          display: grid; grid-template-columns: 3fr 2fr; gap: 20px;
         }
         @media (max-width: 1200px) { .sec-layout { grid-template-columns: 1fr; } }
 
         /* TABLE CARD */
-        .sec-panel { background: #FFF; border-radius: 14px; border: 1px solid #E9EFF5; overflow: hidden; display: flex; flex-direction: column; }
+        .sec-panel { background: #FFF; border-radius: 18px; border: 1px solid #E9EFF5; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
         .sec-panel-header {
           padding: 16px 20px; border-bottom: 1px solid #F1F5F9;
           display: flex; justify-content: space-between; align-items: center;
@@ -269,20 +269,20 @@ const SecretaireDashboard = memo(() => {
         .sec-panel-title { font-size: 15px; font-weight: 800; color: #0F172A; display: flex; align-items: center; gap: 8px; }
         .sec-panel-badge { background: ${ACCENT_LIGHT}; color: ${ACCENT}; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 10px; }
 
-        .sec-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        .sec-table th { padding: 10px 14px; text-align: left; font-size: 10px; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #E9EFF5; background: #FAFBFC; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sec-table td { padding: 12px 14px; border-bottom: 1px solid #F8FAFB; vertical-align: middle; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+        .sec-table { width: 100%; border-collapse: collapse; }
+        .sec-table th { padding: 10px 16px; text-align: left; font-size: 10px; font-weight: 800; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #E9EFF5; background: #FAFBFC; white-space: nowrap; vertical-align: middle; }
+        .sec-table td { padding: 14px 16px; border-bottom: 1px solid #F8FAFB; vertical-align: middle; font-size: 13px; height: 68px; }
         .sec-table tr:hover td { background: #FAFBFC; }
         .sec-table tr:last-child td { border-bottom: none; }
 
         .sec-avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
         .sec-name { font-size: 15px; font-weight: 800; color: #0F172A; letter-spacing: -0.3px; }
 
-        .sec-btn-action { background: #F1F5F9; color: #475569; border: none; padding: 8px 14px; border-radius: 8px; font-size: 11px; font-weight: 800; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
+        .sec-btn-action { background: #F1F5F9; color: #475569; border: none; padding: 8px 16px; border-radius: 10px; font-size: 11px; font-weight: 800; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; flex-shrink: 0; }
         .sec-btn-action:hover { background: #E2E8F0; color: #0F172A; }
         .sec-btn-action.primary { background: ${ACCENT_LIGHT}; color: ${ACCENT}; }
         .sec-btn-action.primary:hover { background: ${ACCENT}; color: #FFF; }
-        .sec-btn-action.danger { background: #FEE2E2; color: #DC2626; padding: 8px; }
+        .sec-btn-action.danger { background: #FEE2E2; color: #DC2626; padding: 8px 10px; border-radius: 10px; }
         .sec-btn-action.danger:hover { background: #FECACA; }
 
         /* RDV LIST */
@@ -342,52 +342,62 @@ const SecretaireDashboard = memo(() => {
           <div className="sec-greeting">Gestion de l'Accueil</div>
           <div className="sec-subline">Vue d'ensemble et pilotage de la salle d'attente pour {profile?.nom_complet || 'votre cabinet'}.</div>
 
-          {/* ── KPIs ── */}
-          <div className="sec-kpi-row">
-            <div className="sec-kpi-card">
-              <div>
-                <div className="sec-kpi-label">Salle d'attente</div>
-                <div className="sec-kpi-val">{activeApts.length}</div>
-                <div className="sec-kpi-sub">patients en ce moment</div>
+          {/* ── KPIs aligned with AdminDashboard styling (New pristine layout) ── */}
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 mb-6">
+            
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-40">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+                  <Users className="text-blue-500 w-5 h-5" strokeWidth={2} />
+                </div>
+                <span className="bg-blue-50 text-blue-600 text-xs font-bold px-3 py-1 rounded-full">Actuellement</span>
               </div>
-              <div className="sec-kpi-icon">
-                <Users size={20} />
+              <div>
+                <p className="text-[13px] text-gray-500 font-medium mb-1">Salle d'attente</p>
+                <p className="text-[28px] font-extrabold text-slate-900 leading-none tracking-tight">{activeApts.length}</p>
               </div>
             </div>
             
-            <div className="sec-kpi-card">
-              <div>
-                <div className="sec-kpi-label">Consultation</div>
-                <div className="sec-kpi-val">{enConsult.length}</div>
-                <div className="sec-kpi-sub">en cours dans les salles</div>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-40">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center">
+                  <Stethoscope className="text-teal-500 w-5 h-5" strokeWidth={2} />
+                </div>
+                <span className="bg-teal-50 text-teal-600 text-xs font-bold px-3 py-1 rounded-full">En cours</span>
               </div>
-              <div className="sec-kpi-icon">
-                <Stethoscope size={20} />
+              <div>
+                <p className="text-[13px] text-gray-500 font-medium mb-1">Consultation</p>
+                <p className="text-[28px] font-extrabold text-slate-900 leading-none tracking-tight">{enConsult.length}</p>
               </div>
             </div>
             
-            <div className="sec-kpi-card">
-              <div>
-                <div className="sec-kpi-label">RDV du jour</div>
-                <div className="sec-kpi-val">{completedApts.length} <span>/ {totalRdvDuJour}</span></div>
-                <div className="sec-kpi-sub">patients terminés</div>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-40">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center">
+                  <CheckCircle className="text-emerald-500 w-5 h-5" strokeWidth={2} />
+                </div>
+                <span className="bg-emerald-50 text-emerald-600 text-xs font-bold px-3 py-1 rounded-full">Terminés</span>
               </div>
-              <div className="sec-kpi-icon">
-                <CheckCircle size={20} />
+              <div>
+                <p className="text-[13px] text-gray-500 font-medium mb-1">RDV du jour</p>
+                <p className="text-[28px] font-extrabold text-slate-900 leading-none tracking-tight">{completedApts.length} <span className="text-[20px] text-gray-300 font-bold">/ {totalRdvDuJour}</span></p>
               </div>
             </div>
             
-            <div className="sec-kpi-card">
-              <div>
-                <div className="sec-kpi-label">Revenu du jour</div>
-                <div className="sec-kpi-val" style={{ fontSize: 28 }}>{fmtMAD(revenuJour)}</div>
-                <div className="sec-kpi-sub green">encaissé aujourd'hui</div>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-40">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center">
+                  <CreditCard className="text-purple-500 w-5 h-5" strokeWidth={2} />
+                </div>
+                <span className="bg-purple-50 text-purple-600 text-xs font-bold px-3 py-1 rounded-full">Aujourd'hui</span>
               </div>
-              <div className="sec-kpi-icon">
-                <CreditCard size={20} />
+              <div>
+                <p className="text-[13px] text-gray-500 font-medium mb-1">Revenu du jour</p>
+                <p className="text-[28px] font-extrabold text-slate-900 leading-none tracking-tight">{fmtMAD(revenuJour)}</p>
               </div>
             </div>
-          </div>
+            
+          </section>
 
           <div className="sec-layout">
             {/* ── LEFT: SALLE D'ATTENTE ── */}
@@ -398,14 +408,14 @@ const SecretaireDashboard = memo(() => {
                   <span className="sec-panel-badge">{activeApts.length}</span>
                 </div>
               </div>
-              <div style={{ overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
                 <table className="sec-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '38%' }}>Patient & Assurance</th>
-                      <th style={{ width: '16%' }}>Heure</th>
-                      <th style={{ width: '24%' }}>Attente / Statut</th>
-                      <th style={{ width: '22%', textAlign: 'right' }}>Actions</th>
+                      <th>Patient & Assurance</th>
+                      <th>Heure</th>
+                      <th>Attente / Statut</th>
+                      <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -440,8 +450,8 @@ const SecretaireDashboard = memo(() => {
                               <WaitCell rdv={apt} />
                             )}
                           </td>
-                          <td>
-                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
                               {isConsult ? (
                                 <button className="sec-btn-action primary" onClick={() => handleTerminer(apt)}>Terminer</button>
                               ) : (

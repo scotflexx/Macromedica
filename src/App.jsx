@@ -12,9 +12,7 @@ import LandingPage from './pages/LandingPage'
 import AppointmentsPage from './pages/dashboard/AppointmentsPage'
 import BillingPage from './pages/dashboard/BillingPage'
 import PatientsPage from './pages/dashboard/PatientsPage'
-import PrescriptionsPage from './pages/dashboard/PrescriptionsPage'
 import StatisticsPage from './pages/dashboard/StatisticsPage'
-import WaitingRoomPage from './pages/dashboard/WaitingRoomPage'
 import StaffManagementPage from './pages/dashboard/StaffManagementPage'
 import SettingsPage from './pages/dashboard/SettingsPage'
 
@@ -51,7 +49,6 @@ function App() {
         <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
           {/* SECRÉTAIRE & DOCTEUR (Shared Access) */}
           <Route path="/secretaire" element={<SecretaireDashboard />} />
-          <Route path="/salle-attente" element={<WaitingRoomPage />} />
           <Route path="/agenda" element={<AppointmentsPage />} />
           <Route path="/facturation" element={<BillingPage />} />
           <Route path="/facturation/:id" element={<BillingPage />} />
@@ -67,14 +64,7 @@ function App() {
               </RoleGuard>
             }
           />
-          <Route
-            path="/ordonnances"
-            element={
-              <RoleGuard role="docteur">
-                <PrescriptionsPage />
-              </RoleGuard>
-            }
-          />
+          {/* Ordonnances are now inside the patient profile view (tab) */}
           <Route
             path="/equipe"
             element={

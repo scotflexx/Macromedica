@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAppContext } from '../../context/AppContext'
-import { Loader2, ArrowLeft, CheckCircle } from 'lucide-react'
+import { Loader2, ArrowLeft, CheckCircle, BadgeEuro } from 'lucide-react'
 import { AppButton, ContentCard } from '../../components/dashboard/DashboardPrimitives'
+import Modal from '../../components/common/Modal'
 import { isValidTransition, RDV_STATUSES } from '../../lib/workflow'
 import PinLock from '../../components/common/PinLock'
 
@@ -15,6 +16,8 @@ export default function ConsultationWorkspace() {
   const [rdv, setRdv] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [showPaymentPopup, setShowPaymentPopup] = useState(false)
+  const [currentConsultationId, setCurrentConsultationId] = useState(null)
   
   const [notes, setNotes] = useState('')
   const [montant, setMontant] = useState(300)
@@ -52,7 +55,8 @@ export default function ConsultationWorkspace() {
     setSaving(true)
     try {
       // 1. Create the consultation record as 'credit' (unpaid) to pass off to System 4 (Billing)
-      const { error: consultError } = await supabase
+      let consultId = null
+      const { data: newConsult, error: consultError } = await supabase
         .from('consultations')
         .insert([{
           cabinet_id: profile.cabinet_id,
@@ -62,21 +66,33 @@ export default function ConsultationWorkspace() {
           statut: 'credit', 
           notes: notes
         }])
+        .select()
+        .maybeSingle()
         
       if (consultError) {
          console.warn("Could not insert rdv_id. Attempting fallback.", consultError)
-         const { error: fallbackError } = await supabase
+         const { data: fallbackConsult, error: fallbackError } = await supabase
             .from('consultations')
             .insert([{ cabinet_id: profile.cabinet_id, patient_id: rdv.patient_id, montant: Number(montant), statut: 'credit', notes}])
+            .select()
+            .maybeSingle()
          if (fallbackError) throw fallbackError
+         if (fallbackConsult) consultId = fallbackConsult.id
+      } else if (newConsult) {
+         consultId = newConsult.id
       }
 
       // 2. Complete the RDV flow securely
       const { error: rdvError } = await supabase.from('rdv').update({ status: RDV_STATUSES.COMPLETED }).eq('id', rdv.id)
       if (rdvError) throw rdvError
 
-      notify({ title: 'Terminé', description: 'Consultation clôturée et transférée au secrétariat.', variant: 'success' })
-      navigate('/salle-attente')
+      if (consultId) {
+        setCurrentConsultationId(consultId)
+        setShowPaymentPopup(true)
+      } else {
+        notify({ title: 'Terminé', description: 'Consultation clôturée et transférée au secrétariat.', variant: 'success' })
+        navigate('/salle-attente')
+      }
 
     } catch (e) {
       console.error(e)
@@ -84,6 +100,31 @@ export default function ConsultationWorkspace() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handlePayNow = async () => {
+    if (!currentConsultationId) return
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('consultations').update({ statut: 'paye' }).eq('id', currentConsultationId)
+      if (error) throw error
+      notify({ title: 'Paiement Valide', description: 'La consultation a été encaissée avec succès.', variant: 'success'})
+      if (rdv.id) {
+        await supabase.from('rdv').update({ status: RDV_STATUSES.PAID }).eq('id', rdv.id)
+      }
+      setShowPaymentPopup(false)
+      navigate('/salle-attente')
+    } catch (e) {
+      notify({ title: 'Erreur', description: 'Échec de l\'encaissement.', variant: 'error' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handlePayLater = () => {
+    setShowPaymentPopup(false)
+    notify({ title: 'Transféré', description: 'Le dossier a été transféré à la facturation.', variant: 'warning' })
+    navigate('/salle-attente')
   }
 
   if (loading) return <div className="p-20 flex justify-center w-full"><Loader2 className="animate-spin w-10 h-10 text-teal-600" /></div>
@@ -177,6 +218,25 @@ export default function ConsultationWorkspace() {
         </div>
         </div>
       </div>
+      
+      <Modal open={showPaymentPopup} onClose={() => {}} title="✅ Consultation terminée">
+          <div className="space-y-6 text-center py-4">
+              <div className="mx-auto w-16 h-16 bg-teal-100 text-teal-600 rounded-full flex items-center justify-center mb-4">
+                  <CheckCircle className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900">Encaisser maintenant ?</h3>
+              <p className="text-slate-500 mb-6 font-medium">Vous pouvez encaisser le montant de <span className="font-bold text-slate-900">{montant} MAD</span> ou le transférer à la facturation pour plus tard.</p>
+              
+              <div className="flex gap-4">
+                 <AppButton onClick={handlePayNow} disabled={saving} className="flex-1 justify-center py-3">
+                   {saving ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : <BadgeEuro className="w-5 h-5 mr-2" />} Encaisser
+                 </AppButton>
+                 <AppButton variant="secondary" onClick={handlePayLater} disabled={saving} className="flex-1 justify-center py-3">
+                    Plus tard
+                 </AppButton>
+              </div>
+          </div>
+      </Modal>
     </PinLock>
   )
 }

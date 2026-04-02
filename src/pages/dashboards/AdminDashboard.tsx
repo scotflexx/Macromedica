@@ -106,61 +106,61 @@ function AdminDashboard() {
         NEW DASHBOARD VERSION
       </div>
 
-      {/* KPI CARDS — HARD REBUILD */}
+      {/* KPI CARDS aligned with AdminDashboard styling (New pristine layout) */}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {/* Card 1 */}
-        <div className="bg-white rounded-2xl shadow-lg p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl flex flex-col justify-between h-40 border border-gray-100">
-          <div className="flex justify-between items-start">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <User className="text-blue-600 w-6 h-6" />
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-40">
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+              <User className="text-blue-500 w-5 h-5" strokeWidth={2} />
             </div>
-            <span className="bg-blue-100 text-blue-600 text-xs font-bold px-2 py-1 rounded-full">+12%</span>
+            <span className="bg-blue-50 text-blue-600 text-xs font-bold px-3 py-1 rounded-full">+12%</span>
           </div>
           <div>
-            <p className="text-sm text-gray-500 font-medium">Patients aujourd'hui</p>
-            <p className="text-3xl font-bold text-gray-900">12</p>
+            <p className="text-[13px] text-gray-500 font-medium mb-1">Patients aujourd'hui</p>
+            <p className="text-[28px] font-extrabold text-slate-900 leading-none tracking-tight">12</p>
           </div>
         </div>
 
         {/* Card 2 */}
-        <div className="bg-white rounded-2xl shadow-lg p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl flex flex-col justify-between h-40 border border-gray-100">
-          <div className="flex justify-between items-start">
-            <div className="p-2 bg-gray-100 rounded-lg">
-              <Coins className="text-gray-700 w-6 h-6" />
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-40">
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center">
+              <Coins className="text-gray-500 w-5 h-5" strokeWidth={2} />
             </div>
-            <span className="bg-gray-100 text-gray-700 text-xs font-bold px-2 py-1 rounded-full">Stable</span>
+            <span className="bg-gray-50 text-gray-600 text-xs font-bold px-3 py-1 rounded-full">Stable</span>
           </div>
           <div>
-            <p className="text-sm text-gray-500 font-medium">CA aujourd'hui</p>
-            <p className="text-3xl font-bold text-gray-900">3,450 MAD</p>
+            <p className="text-[13px] text-gray-500 font-medium mb-1">CA aujourd'hui</p>
+            <p className="text-[28px] font-extrabold text-slate-900 leading-none tracking-tight">3,450 MAD</p>
           </div>
         </div>
 
         {/* Card 3 */}
-        <div className="bg-white rounded-2xl shadow-lg p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl flex flex-col justify-between h-40 border border-gray-100">
-          <div className="flex justify-between items-start">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <Wallet className="text-red-600 w-6 h-6" />
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-40">
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+              <Wallet className="text-red-500 w-5 h-5" strokeWidth={2} />
             </div>
-            <span className="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded-full">Action requise</span>
+            <span className="bg-red-50 text-red-600 text-xs font-bold px-3 py-1 rounded-full">Action requise</span>
           </div>
           <div>
-            <p className="text-sm text-gray-500 font-medium">Crédits en attente</p>
-            <p className="text-3xl font-bold text-gray-900">1,050 MAD</p>
+            <p className="text-[13px] text-gray-500 font-medium mb-1">Crédits en attente</p>
+            <p className="text-[28px] font-extrabold text-slate-900 leading-none tracking-tight">1,050 MAD</p>
           </div>
         </div>
 
         {/* Card 4 */}
-        <div className="bg-white rounded-2xl shadow-lg p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-xl flex flex-col justify-between h-40 border border-gray-100">
-          <div className="flex justify-between items-start">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Activity className="text-purple-600 w-6 h-6" />
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between h-40">
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center">
+              <Activity className="text-purple-500 w-5 h-5" strokeWidth={2} />
             </div>
-            <span className="bg-purple-100 text-purple-600 text-xs font-bold px-2 py-1 rounded-full">Ce mois</span>
+            <span className="bg-purple-50 text-purple-600 text-xs font-bold px-3 py-1 rounded-full">Ce mois</span>
           </div>
           <div>
-            <p className="text-sm text-gray-500 font-medium">Consultations totales</p>
-            <p className="text-3xl font-bold text-gray-900">156</p>
+            <p className="text-[13px] text-gray-500 font-medium mb-1">Consultations totales</p>
+            <p className="text-[28px] font-extrabold text-slate-900 leading-none tracking-tight">156</p>
           </div>
         </div>
       </section>
