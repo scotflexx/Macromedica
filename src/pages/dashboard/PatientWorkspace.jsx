@@ -34,6 +34,8 @@ import {
   ListChecks,
   ClipboardList,
   BookOpen,
+  Edit3,
+  Save,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { getPatientById } from '../../lib/api'
@@ -123,7 +125,32 @@ function formatTimer(seconds) {
   return [hours, mins, secs].map(v => String(v).padStart(2, '0')).join(':')
 }
 
-// Components
+// Components matching Dashboard style
+function StatCard({ icon: Icon, iconWrap, iconColor, label, value, suffix = '' }) {
+  return (
+    <div className="flex items-center justify-between rounded-[21px] border border-[#e2e8f0] bg-white px-5 py-5 shadow-[0_5px_16px_rgba(15,23,42,0.045)] transition hover:-translate-y-[1px]">
+      <div className="flex items-center gap-3.5">
+        <div className={`flex h-[52px] w-[52px] items-center justify-center rounded-full ${iconWrap}`}>
+          <Icon className={iconColor} size={25} strokeWidth={2.1} />
+        </div>
+        <p className="text-sm font-medium text-slate-600">
+          {label}
+        </p>
+      </div>
+      <div className="flex items-end gap-1.5">
+        <p className="text-4xl font-bold text-slate-900 leading-none">
+          {value}
+        </p>
+        {suffix && (
+          <p className="pb-1 text-base font-semibold text-slate-600">
+            {suffix}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function StatusBadge({ status }) {
   let bgClass = 'bg-slate-100'
   let textClass = 'text-slate-600'
@@ -169,20 +196,6 @@ function Chip({ children, color = 'blue' }) {
   )
 }
 
-function InfoCard({ title, children, icon: Icon }) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100">
-        <div className="flex items-center gap-2">
-          {Icon && <Icon className="w-4 h-4 text-slate-400" />}
-          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-        </div>
-      </div>
-      <div className="p-5">{children}</div>
-    </div>
-  )
-}
-
 function AlertItem({ label, severity }) {
   let colorClass = 'bg-red-50 border-red-200 text-red-700'
   
@@ -196,59 +209,6 @@ function AlertItem({ label, severity }) {
     <div className={className}>
       <AlertTriangle className="w-4 h-4 flex-shrink-0" />
       <span className="text-sm font-medium">{label}</span>
-    </div>
-  )
-}
-
-function SOAPSection({ letter, title, children, isExpanded, onToggle }) {
-  let bgClass = 'bg-blue-100'
-  let textClass = 'text-blue-600'
-  
-  if (letter === 'S') {
-    bgClass = 'bg-blue-100'
-    textClass = 'text-blue-600'
-  } else if (letter === 'O') {
-    bgClass = 'bg-emerald-100'
-    textClass = 'text-emerald-600'
-  } else if (letter === 'A') {
-    bgClass = 'bg-purple-100'
-    textClass = 'text-purple-600'
-  } else if (letter === 'P') {
-    bgClass = 'bg-amber-100'
-    textClass = 'text-amber-600'
-  }
-
-  const chevronClass = isExpanded ? 'rotate-90' : ''
-  
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <button
-        onClick={onToggle}
-        className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div className={'w-10 h-10 rounded-xl ' + bgClass + ' flex items-center justify-center'}>
-            <span className={textClass + ' font-bold'}>{letter}</span>
-          </div>
-          <span className="font-semibold text-slate-800">{title}</span>
-        </div>
-        <ChevronRight className={'w-5 h-5 text-slate-400 transition-transform ' + chevronClass} />
-      </button>
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className="px-5 pb-5 pt-0 border-t border-slate-100">
-              {children}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }
@@ -332,6 +292,25 @@ function DocumentCard({ doc }) {
   )
 }
 
+function QuickNoteField({ title, placeholder, value, onChange, icon: Icon }) {
+  return (
+    <div className="rounded-[21px] border border-[#e2e8f0] bg-white p-5 shadow-[0_5px_16px_rgba(15,23,42,0.045)]">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50">
+          <Icon className="w-5 h-5 text-blue-600" />
+        </div>
+        <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full h-40 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+      />
+    </div>
+  )
+}
+
 // Main Component
 export default function PatientWorkspace() {
   const navigate = useNavigate()
@@ -340,19 +319,24 @@ export default function PatientWorkspace() {
   const [consultationStatus, setConsultationStatus] = useState('not_started')
   const [consultationStartTime, setConsultationStartTime] = useState(null)
   const [timerSeconds, setTimerSeconds] = useState(0)
-  const [soapSections, setSoapSections] = useState({
-    S: false,
-    O: false,
-    A: false,
-    P: false,
-  })
-  const [soapData, setSoapData] = useState({
-    subjective: '',
-    objective: '',
-    assessment: '',
-    plan: '',
-  })
   const [showAutosave, setShowAutosave] = useState(false)
+  
+  // New state for futuristic layout
+  const [consultationNotes, setConsultationNotes] = useState({
+    anamnese: '',
+    examen: '',
+    diagnostic: '',
+    traitement: '',
+    prescription: '',
+  })
+  
+  const [vitals, setVitals] = useState({
+    poids: MOCK_PATIENT.poids,
+    taille: MOCK_PATIENT.taille,
+    tension: '120/80',
+    temperature: '36.8',
+    frequency: '78',
+  })
 
   // Timer effect
   useEffect(() => {
@@ -374,12 +358,11 @@ export default function PatientWorkspace() {
       }, 1000)
       return () => clearTimeout(timeout)
     }
-  }, [soapData, consultationStatus])
+  }, [consultationNotes, consultationStatus])
 
   const handleStartConsultation = () => {
     setConsultationStatus('in_progress')
     setConsultationStartTime(new Date().toISOString())
-    setSoapSections({ S: true, O: false, A: false, P: false })
   }
 
   const handleEndConsultation = () => {
@@ -388,50 +371,51 @@ export default function PatientWorkspace() {
     setTimerSeconds(0)
   }
 
-  const toggleSoapSection = (section) => {
-    setSoapSections(prev => ({ ...prev, [section]: !prev[section] }))
-  }
-
   const patient = MOCK_PATIENT
   const age = calcAge(patient.date_naissance)
-  const bmi = patient.poids / Math.pow(patient.taille / 100, 2)
+  const bmi = vitals.poids / Math.pow(vitals.taille / 100, 2)
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[#f8fafc]">
       {/* Top Header */}
-      <header className="sticky top-0 z-50 bg-slate-50 px-6 py-4">
-        <div className="max-w-[1600px] mx-auto">
-          <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 shadow-sm">
+      <header className="sticky top-0 z-50 bg-[#f8fafc] px-6 py-4">
+        <div className="max-w-[1800px] mx-auto">
+          <div className="bg-white border border-[#e2e8f0] rounded-[21px] px-6 py-5 shadow-[0_5px_16px_rgba(15,23,42,0.045)]">
             <div className="flex items-center justify-between">
               {/* Left: Back + Patient Info */}
               <div className="flex items-center gap-4">
                 <button
-                  onClick={() => navigate('/patients')}
-                  className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors"
+                  onClick={() => navigate('/dashboard')}
+                  className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
                 >
                   <ArrowLeft className="w-5 h-5 text-slate-600" />
                 </button>
-                <div>
-                  <h1 className="text-2xl font-semibold text-slate-900">
-                    {patient.prenom} {patient.nom}
-                  </h1>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="text-sm text-slate-600">
-                      {age} ans • {patient.sexe === 'F' ? 'Femme' : 'Homme'} • {patient.assurance}
-                    </span>
-                    <span className="text-slate-300">•</span>
-                    <span className="text-sm text-slate-500">Patient ID: {patient.id}</span>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-r from-[#2563eb] to-[#14b8a6] flex items-center justify-center text-white font-bold text-lg">
+                    {patient.prenom[0]}{patient.nom[0]}
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold text-slate-900">
+                      {patient.prenom} {patient.nom}
+                    </h1>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-sm font-medium text-slate-600">
+                        {age} ans • {patient.sexe === 'F' ? 'Femme' : 'Homme'} • {patient.assurance}
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-sm text-slate-500">Patient ID: {patient.id}</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Right: Status + CTA */}
+              {/* Right: Status + Timer + CTA */}
               <div className="flex items-center gap-4">
                 <StatusBadge status={consultationStatus} />
                 {consultationStatus === 'in_progress' && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-full">
-                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                    <span className="text-sm font-medium text-blue-700">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-full border border-blue-200">
+                    <Clock className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-semibold text-blue-800">
                       {formatTimer(timerSeconds)}
                     </span>
                   </div>
@@ -439,23 +423,31 @@ export default function PatientWorkspace() {
                 {consultationStatus === 'not_started' ? (
                   <button
                     onClick={handleStartConsultation}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-200"
+                    className="flex items-center gap-2 px-6 py-3 bg-[#2563eb] text-white rounded-[12px] font-semibold hover:bg-blue-700 transition-all shadow-[0_6px_16px_rgba(37,99,235,0.25)]"
                   >
+                    <Play className="w-4 h-4" />
                     Commencer la consultation
                   </button>
-                ) : (
-                  <button
-                    onClick={handleEndConsultation}
-                    className="px-6 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-200"
-                  >
-                    Terminer
-                  </button>
-                )}
+                ) : consultationStatus === 'in_progress' ? (
+                  <div className="flex items-center gap-3">
+                    <button className="flex items-center gap-2 px-5 py-3 bg-amber-500 text-white rounded-[12px] font-semibold hover:bg-amber-600 transition-all shadow-[0_6px_16px_rgba(245,158,11,0.25)]">
+                      <Plus className="w-4 h-4" />
+                      + Acte
+                    </button>
+                    <button
+                      onClick={handleEndConsultation}
+                      className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-[12px] font-semibold hover:bg-emerald-700 transition-all shadow-[0_6px_16px_rgba(5,150,105,0.25)]"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      Terminer
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
 
             {/* Chips */}
-            <div className="flex items-center gap-2 mt-4">
+            <div className="flex items-center gap-2 mt-5">
               <Chip color="blue">CNSS</Chip>
               <Chip color="amber">Diabétique</Chip>
               <Chip color="red">Allergie PCN</Chip>
@@ -471,7 +463,7 @@ export default function PatientWorkspace() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="fixed top-24 right-6 z-50 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm"
+            className="fixed top-28 right-6 z-50 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm"
           >
             <CheckCircle2 className="w-4 h-4" />
             Brouillon enregistré
@@ -480,286 +472,64 @@ export default function PatientWorkspace() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="max-w-[1600px] mx-auto px-6 py-6">
+      <main className="max-w-[1800px] mx-auto px-6 pb-10">
         <div className="grid grid-cols-12 gap-6">
-          {/* Left: Main Content */}
-          <div className="col-span-12 lg:col-span-8">
-            {/* Tabs */}
-            <div className="bg-slate-100 rounded-xl p-1 inline-flex mb-6">
-              {['overview', 'timeline', 'documents'].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === tab
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
-            </div>
-
-            {/* Tab Content */}
-            <AnimatePresence mode="wait">
-              {activeTab === 'overview' && (
-                <motion.div
-                  key="overview"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-6"
-                >
-                  {/* Patient Info Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <InfoCard title="Patient Summary" icon={User}>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-xs text-slate-500 mb-1">Age</p>
-                          <p className="text-sm font-semibold text-slate-800">{age} ans</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 mb-1">Sexe</p>
-                          <p className="text-sm font-semibold text-slate-800">{patient.sexe === 'F' ? 'Femme' : 'Homme'}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 mb-1">Assurance</p>
-                          <p className="text-sm font-semibold text-slate-800">{patient.assurance}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 mb-1">Téléphone</p>
-                          <p className="text-sm font-semibold text-slate-800">{patient.telephone}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 mb-1">Groupe sanguin</p>
-                          <p className="text-sm font-semibold text-slate-800">{patient.groupe_sanguin}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500 mb-1">Contact urgence</p>
-                          <p className="text-sm font-semibold text-slate-800 truncate">{patient.contact_urgence}</p>
-                        </div>
-                      </div>
-                    </InfoCard>
-
-                    <InfoCard title="Medical Alerts" icon={AlertTriangle}>
-                      <div className="space-y-2">
-                        {MOCK_ALERTS.map(alert => (
-                          <AlertItem key={alert.id} label={alert.label} severity={alert.severity} />
-                        ))}
-                      </div>
-                    </InfoCard>
-
-                    <InfoCard title="Current Treatment" icon={Pill}>
-                      <div className="space-y-3">
-                        {MOCK_MEDICATIONS.map(med => (
-                          <div key={med.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800">{med.name}</p>
-                              <p className="text-xs text-slate-500">{med.dosage}</p>
-                            </div>
-                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                          </div>
-                        ))}
-                      </div>
-                    </InfoCard>
-
-                    <InfoCard title="Recent Results" icon={Heart}>
-                      <div className="space-y-3">
-                        {MOCK_RESULTS.map(result => (
-                          <div key={result.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800">{result.type}</p>
-                              <p className="text-xs text-slate-500">{result.date}</p>
-                            </div>
-                            <span className="text-sm font-semibold text-slate-800">{result.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </InfoCard>
-                  </div>
-
-                  {/* Consultation Section */}
-                  {consultationStatus === 'not_started' ? (
-                    <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-                      <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                        <Stethoscope className="w-10 h-10 text-slate-400" />
-                      </div>
-                      <h3 className="text-lg font-semibold text-slate-800 mb-2">
-                        No consultation has been started
-                      </h3>
-                      <p className="text-sm text-slate-500 mb-6">
-                        Start a consultation to document the patient visit
-                      </p>
-                      <button
-                        onClick={handleStartConsultation}
-                        className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors"
-                      >
-                        Commencer la consultation
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-semibold text-slate-800">Consultation en cours</h2>
-                      </div>
-                      
-                      <SOAPSection
-                        letter="S"
-                        title="Subjective"
-                        isExpanded={soapSections.S}
-                        onToggle={() => toggleSoapSection('S')}
-                      >
-                        <textarea
-                          value={soapData.subjective}
-                          onChange={(e) => setSoapData(prev => ({ ...prev, subjective: e.target.value }))}
-                          placeholder="Patient's chief complaint, history of present illness..."
-                          className="w-full h-32 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                        />
-                      </SOAPSection>
-
-                      <SOAPSection
-                        letter="O"
-                        title="Objective"
-                        isExpanded={soapSections.O}
-                        onToggle={() => toggleSoapSection('O')}
-                      >
-                        <textarea
-                          value={soapData.objective}
-                          onChange={(e) => setSoapData(prev => ({ ...prev, objective: e.target.value }))}
-                          placeholder="Physical examination findings, vital signs, lab results..."
-                          className="w-full h-32 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                        />
-                      </SOAPSection>
-
-                      <SOAPSection
-                        letter="A"
-                        title="Assessment"
-                        isExpanded={soapSections.A}
-                        onToggle={() => toggleSoapSection('A')}
-                      >
-                        <textarea
-                          value={soapData.assessment}
-                          onChange={(e) => setSoapData(prev => ({ ...prev, assessment: e.target.value }))}
-                          placeholder="Diagnosis, differential diagnosis..."
-                          className="w-full h-32 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                        />
-                      </SOAPSection>
-
-                      <SOAPSection
-                        letter="P"
-                        title="Plan"
-                        isExpanded={soapSections.P}
-                        onToggle={() => toggleSoapSection('P')}
-                      >
-                        <textarea
-                          value={soapData.plan}
-                          onChange={(e) => setSoapData(prev => ({ ...prev, plan: e.target.value }))}
-                          placeholder="Treatment plan, follow-up, prescriptions..."
-                          className="w-full h-32 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
-                        />
-                      </SOAPSection>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-
-              {activeTab === 'timeline' && (
-                <motion.div
-                  key="timeline"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                    <h2 className="text-lg font-semibold text-slate-800 mb-6">Patient Timeline</h2>
-                    <div className="space-y-0">
-                      {TIMELINE_EVENTS.map((event, index) => (
-                        <TimelineEvent key={event.id} event={event} index={index} />
-                      ))}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {activeTab === 'documents' && (
-                <motion.div
-                  key="documents"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                    <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-lg font-semibold text-slate-800">Documents</h2>
-                      <button className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
-                        Add Document
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {DOCUMENTS.map(doc => (
-                        <DocumentCard key={doc.id} doc={doc} />
-                      ))}
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Right: Sticky Sidebar */}
-          <div className="col-span-12 lg:col-span-4">
-            <div className="sticky top-24 space-y-4">
+          {/* Left: Patient Snapshot Sidebar (Sticky) */}
+          <div className="col-span-12 lg:col-span-3 order-2 lg:order-1">
+            <div className="sticky top-[140px] space-y-6">
               {/* Patient Snapshot */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100">
+              <div className="bg-white rounded-[21px] border border-[#e2e8f0] shadow-[0_5px_16px_rgba(15,23,42,0.045)] overflow-hidden">
+                <div className="px-6 py-5 border-b border-[#e2e8f0]">
                   <h3 className="text-sm font-semibold text-slate-800">Patient Snapshot</h3>
                 </div>
-                <div className="p-5 space-y-4">
+                <div className="p-6 space-y-5">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-xs text-slate-500 mb-1">Age</p>
-                      <p className="text-sm font-semibold text-slate-800">{age} ans</p>
+                      <p className="text-base font-semibold text-slate-800">{age} ans</p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-500 mb-1">Assurance</p>
-                      <p className="text-sm font-semibold text-slate-800">{patient.assurance}</p>
+                      <p className="text-xs text-slate-500 mb-1">Groupe sanguin</p>
+                      <p className="text-base font-semibold text-slate-800">{patient.groupe_sanguin}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-500 mb-1">Poids</p>
-                      <p className="text-sm font-semibold text-slate-800">{patient.poids} kg</p>
+                      <p className="text-base font-semibold text-slate-800">{vitals.poids} kg</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-500 mb-1">Taille</p>
-                      <p className="text-sm font-semibold text-slate-800">{patient.taille} cm</p>
+                      <p className="text-base font-semibold text-slate-800">{vitals.taille} cm</p>
                     </div>
                     <div className="col-span-2">
                       <p className="text-xs text-slate-500 mb-1">IMC</p>
-                      <p className="text-sm font-semibold text-slate-800">{bmi.toFixed(1)} kg/m²</p>
+                      <p className="text-base font-semibold text-slate-800">{bmi.toFixed(1)} kg/m²</p>
                     </div>
                   </div>
 
-                  <div className="pt-4 border-t border-slate-100">
-                    <p className="text-xs text-slate-500 mb-2">Alertes</p>
+                  {/* Medical Alerts */}
+                  <div className="pt-5 border-t border-[#e2e8f0]">
+                    <p className="text-xs font-semibold text-slate-500 mb-3">Alertes</p>
                     <div className="space-y-2">
                       {MOCK_ALERTS.map(alert => (
-                        <div key={alert.id} className="flex items-center gap-2 text-sm">
-                          <div className={`w-1.5 h-1.5 rounded-full ${alert.severity === 'critical' ? 'bg-red-500' : 'bg-amber-500'}`} />
-                          <span className="text-slate-700">{alert.label}</span>
+                        <div key={alert.id} className="flex items-center gap-2 p-3 rounded-xl border bg-amber-50 border-amber-200">
+                          <AlertTriangle className="w-4 h-4 text-amber-600" />
+                          <span className="text-sm font-medium text-amber-900">{alert.label}</span>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  <div className="pt-4 border-t border-slate-100">
-                    <p className="text-xs text-slate-500 mb-2">Traitement actuel</p>
+                  {/* Current Treatment */}
+                  <div className="pt-5 border-t border-[#e2e8f0]">
+                    <p className="text-xs font-semibold text-slate-500 mb-3">Traitement actuel</p>
                     <div className="space-y-2">
                       {MOCK_MEDICATIONS.map(med => (
-                        <div key={med.id} className="text-sm text-slate-700">
-                          {med.name}
+                        <div key={med.id} className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                          <Pill className="w-4 h-4 text-blue-600" />
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800">{med.name}</p>
+                            <p className="text-xs text-slate-500">{med.dosage}</p>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -767,17 +537,161 @@ export default function PatientWorkspace() {
                 </div>
               </div>
 
-              {/* Timer Card (during consultation) */}
-              {consultationStatus === 'in_progress' && (
-                <div className="bg-blue-50 rounded-2xl border border-blue-200 p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Clock className="w-5 h-5 text-blue-600" />
-                    <h3 className="text-sm font-semibold text-blue-800">Consultation Timer</h3>
-                  </div>
-                  <p className="text-3xl font-bold text-blue-900">{formatTimer(timerSeconds)}</p>
+              {/* Recent Results */}
+              <div className="bg-white rounded-[21px] border border-[#e2e8f0] shadow-[0_5px_16px_rgba(15,23,42,0.045)] overflow-hidden">
+                <div className="px-6 py-5 border-b border-[#e2e8f0]">
+                  <h3 className="text-sm font-semibold text-slate-800">Résultats récents</h3>
                 </div>
-              )}
+                <div className="p-6 space-y-3">
+                  {MOCK_RESULTS.map(result => (
+                    <div key={result.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">{result.type}</p>
+                        <p className="text-xs text-slate-500">{result.date}</p>
+                      </div>
+                      <span className="text-base font-semibold text-emerald-700">{result.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
+          </div>
+
+          {/* Right: Consultation Workspace */}
+          <div className="col-span-12 lg:col-span-9 order-1 lg:order-2">
+            <AnimatePresence mode="wait">
+              {consultationStatus === 'not_started' ? (
+                <motion.div
+                  key="not-started"
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -16 }}
+                  transition={{ duration: 0.3 }}
+                  className="bg-white rounded-[21px] border border-[#e2e8f0] p-16 text-center shadow-[0_5px_16px_rgba(15,23,42,0.045)]"
+                >
+                  <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6">
+                    <Stethoscope className="w-12 h-12 text-slate-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900 mb-3">
+                    Consultation non commencée
+                  </h3>
+                  <p className="text-base text-slate-500 mb-8 max-w-md mx-auto">
+                    Cliquez sur "Commencer la consultation" pour accéder à l'espace de travail clinique
+                  </p>
+                  <button
+                    onClick={handleStartConsultation}
+                    className="inline-flex items-center gap-2 px-8 py-4 bg-[#2563eb] text-white rounded-[14px] font-semibold hover:bg-blue-700 transition-all shadow-[0_8px_24px_rgba(37,99,235,0.35)]"
+                  >
+                    <Play className="w-5 h-5" />
+                    Commencer la consultation
+                  </button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="in-progress"
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -16 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
+                >
+                  {/* Vitals Section */}
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    <div className="rounded-[21px] border border-[#e2e8f0] bg-white p-5 shadow-[0_5px_16px_rgba(15,23,42,0.045)]">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Scale className="w-5 h-5 text-blue-600" />
+                        <span className="text-xs font-semibold text-slate-600 uppercase">Poids</span>
+                      </div>
+                      <p className="text-3xl font-bold text-slate-900">{vitals.poids} <span className="text-sm text-slate-500">kg</span></p>
+                    </div>
+                    <div className="rounded-[21px] border border-[#e2e8f0] bg-white p-5 shadow-[0_5px_16px_rgba(15,23,42,0.045)]">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Ruler className="w-5 h-5 text-emerald-600" />
+                        <span className="text-xs font-semibold text-slate-600 uppercase">Taille</span>
+                      </div>
+                      <p className="text-3xl font-bold text-slate-900">{vitals.taille} <span className="text-sm text-slate-500">cm</span></p>
+                    </div>
+                    <div className="rounded-[21px] border border-[#e2e8f0] bg-white p-5 shadow-[0_5px_16px_rgba(15,23,42,0.045)]">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Activity className="w-5 h-5 text-purple-600" />
+                        <span className="text-xs font-semibold text-slate-600 uppercase">Tension</span>
+                      </div>
+                      <p className="text-3xl font-bold text-slate-900">{vitals.tension} <span className="text-sm text-slate-500">mmHg</span></p>
+                    </div>
+                    <div className="rounded-[21px] border border-[#e2e8f0] bg-white p-5 shadow-[0_5px_16px_rgba(15,23,42,0.045)]">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Thermometer className="w-5 h-5 text-amber-600" />
+                        <span className="text-xs font-semibold text-slate-600 uppercase">Température</span>
+                      </div>
+                      <p className="text-3xl font-bold text-slate-900">{vitals.temperature} <span className="text-sm text-slate-500">°C</span></p>
+                    </div>
+                    <div className="rounded-[21px] border border-[#e2e8f0] bg-white p-5 shadow-[0_5px_16px_rgba(15,23,42,0.045)]">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Heart className="w-5 h-5 text-red-600" />
+                        <span className="text-xs font-semibold text-slate-600 uppercase">Fréquence</span>
+                      </div>
+                      <p className="text-3xl font-bold text-slate-900">{vitals.frequency} <span className="text-sm text-slate-500">bpm</span></p>
+                    </div>
+                  </div>
+
+                  {/* Notes Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <QuickNoteField
+                      title="Anamnèse"
+                      placeholder="Motif de consultation, historique..."
+                      icon={BookOpen}
+                      value={consultationNotes.anamnese}
+                      onChange={(val) => setConsultationNotes(prev => ({...prev, anamnese: val}))}
+                    />
+                    <QuickNoteField
+                      title="Examen clinique"
+                      placeholder="Signes cliniques, observations..."
+                      icon={Stethoscope}
+                      value={consultationNotes.examen}
+                      onChange={(val) => setConsultationNotes(prev => ({...prev, examen: val}))}
+                    />
+                    <QuickNoteField
+                      title="Diagnostic"
+                      placeholder="Diagnostic principal, différentiels..."
+                      icon={Brain}
+                      value={consultationNotes.diagnostic}
+                      onChange={(val) => setConsultationNotes(prev => ({...prev, diagnostic: val}))}
+                    />
+                    <QuickNoteField
+                      title="Traitement"
+                      placeholder="Plan thérapeutique, recommandations..."
+                      icon={Pill}
+                      value={consultationNotes.traitement}
+                      onChange={(val) => setConsultationNotes(prev => ({...prev, traitement: val}))}
+                    />
+                  </div>
+
+                  {/* Prescription Note */}
+                  <QuickNoteField
+                    title="Prescription"
+                    placeholder="Ordonnance..."
+                    icon={FileCheck2}
+                    value={consultationNotes.prescription}
+                    onChange={(val) => setConsultationNotes(prev => ({...prev, prescription: val}))}
+                  />
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-4 pt-2">
+                    <button
+                      onClick={handleEndConsultation}
+                      className="flex items-center gap-2 px-8 py-4 bg-emerald-600 text-white rounded-[14px] font-semibold hover:bg-emerald-700 transition-all shadow-[0_8px_24px_rgba(5,150,105,0.35)]"
+                    >
+                      <CheckCircle2 className="w-5 h-5" />
+                      Terminer la consultation
+                    </button>
+                    <button className="flex items-center gap-2 px-6 py-4 bg-slate-100 text-slate-800 rounded-[14px] font-semibold hover:bg-slate-200 transition-all">
+                      <Save className="w-5 h-5" />
+                      Sauvegarder
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </main>
