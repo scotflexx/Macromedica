@@ -84,7 +84,7 @@ function InvoiceFormModal({ open, onClose, onSuccess }) {
             <select
               value={form.patient_id}
               onChange={(e) => setForm((c) => ({ ...c, patient_id: e.target.value }))}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300"
             >
               <option value="">— Sélectionner —</option>
               {patients.map((p) => (
@@ -98,7 +98,7 @@ function InvoiceFormModal({ open, onClose, onSuccess }) {
               type="date"
               value={form.date_consult}
               onChange={(e) => setForm((c) => ({ ...c, date_consult: e.target.value }))}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300"
             />
           </label>
         </div>
@@ -113,7 +113,7 @@ function InvoiceFormModal({ open, onClose, onSuccess }) {
               value={form.montant}
               onChange={(e) => setForm((c) => ({ ...c, montant: e.target.value }))}
               placeholder="250"
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300"
             />
           </label>
           <label className="block">
@@ -121,7 +121,7 @@ function InvoiceFormModal({ open, onClose, onSuccess }) {
             <select
               value={form.statut}
               onChange={(e) => setForm((c) => ({ ...c, statut: e.target.value }))}
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300"
             >
               <option value="paye">Payé</option>
               <option value="credit">Crédit</option>
@@ -136,7 +136,7 @@ function InvoiceFormModal({ open, onClose, onSuccess }) {
             value={form.notes}
             onChange={(e) => setForm((c) => ({ ...c, notes: e.target.value }))}
             rows={3}
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300"
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300"
           />
         </label>
 
@@ -148,7 +148,7 @@ function InvoiceFormModal({ open, onClose, onSuccess }) {
 
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onClose} className="interactive rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-medium text-slate-700">Annuler</button>
-          <button type="submit" disabled={loading} className="interactive inline-flex items-center gap-2 rounded-2xl bg-teal-600 px-5 py-3 text-base font-medium text-white disabled:opacity-70">
+          <button type="submit" disabled={loading} className="interactive inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-base font-medium text-white disabled:opacity-70">
             {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...</> : 'Enregistrer'}
           </button>
         </div>

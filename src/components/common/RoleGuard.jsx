@@ -1,29 +1,30 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAppContext } from '../../context/AppContext'
 import { Loader2 } from 'lucide-react'
+import { can, hasRoleAccess, normalizeRole } from '../../lib/rbac'
 
-export default function RoleGuard({ role, children }) {
-  const { isAuthenticated, isInitializing, role: userRole } = useAppContext()
+export default function RoleGuard({ role, roles, permission, redirectTo = '/dashboard', children }) {
+  const { isAuthenticated, isInitializing, role: userRole, canonicalRole } = useAppContext()
 
   if (isInitializing) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     )
   }
 
   if (!isAuthenticated) return <Navigate to="/login" replace />
 
-  // If component specifically requires 'docteur' role, and the user is 'secretaire'
-  if (role === 'docteur' && userRole === 'secretaire') {
-    return <Navigate to="/salle-attente" replace />
+  const currentRole = canonicalRole || normalizeRole(userRole)
+
+  if (permission && !can(currentRole, permission)) {
+    return <Navigate to={redirectTo} replace />
   }
 
-  if (role && userRole !== role) {
-    if (userRole === 'secretaire') return <Navigate to="/salle-attente" replace />
-    if (userRole === 'docteur') return <Navigate to="/dashboard" replace />
-    return <Navigate to="/login" replace />
+  const allowedRoles = roles ?? (role ? [role] : [])
+  if (allowedRoles.length > 0 && !hasRoleAccess(currentRole, allowedRoles)) {
+    return <Navigate to={redirectTo} replace />
   }
 
   return children ? children : <Outlet />

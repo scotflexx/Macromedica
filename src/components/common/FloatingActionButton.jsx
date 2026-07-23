@@ -50,7 +50,7 @@ function MenuItem({ id, icon: Icon, label, onClick, openDelay, closeDelay, open 
         }}
       >
         <span className="menu-icon-wrapper relative z-10 flex items-center justify-center">
-          <Icon className="h-[22px] w-[22px] text-teal-700" />
+          <Icon className="h-[22px] w-[22px] text-blue-700" />
         </span>
         {ripples.map(r => (
           <span
@@ -101,8 +101,8 @@ function FloatingActionButton() {
     <>
       <style>{`
         @keyframes fab-pulse {
-          0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(13,148,136,0.4); }
-          50% { transform: scale(1.05); box-shadow: 0 0 35px rgba(13,148,136,0.7); }
+          0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(59,130,246,0.4); }
+          50% { transform: scale(1.05); box-shadow: 0 0 35px rgba(59,130,246,0.7); }
         }
         @keyframes fab-spin {
           to { transform: rotate(360deg); }
@@ -133,8 +133,8 @@ function FloatingActionButton() {
         }
         .fab-main.fab-open {
           transform: scale(1.1);
-          box-shadow: 0 0 40px rgba(13,148,136,0.5);
-          background-color: #0f766e;
+          box-shadow: 0 0 40px rgba(59,130,246,0.5);
+          background-color: #2563EB;
           transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
         }
         .fab-idle-state {
@@ -143,8 +143,8 @@ function FloatingActionButton() {
         .fab-idle-state:hover {
           animation: none !important;
           transform: scale(1.15) !important;
-          box-shadow: 0 0 40px rgba(13,148,136,0.8) !important;
-          background-color: #0d9488 !important;
+          box-shadow: 0 0 40px rgba(59,130,246,0.8) !important;
+          background-color: #3B82F6 !important;
         }
         
         .fab-icon-spin {
@@ -172,7 +172,7 @@ function FloatingActionButton() {
           border-radius: 50%;
           transform: scale(0);
           animation: ripple-anim 0.5s ease-out;
-          background-color: rgba(13,148,136,0.15);
+          background-color: rgba(59,130,246,0.15);
           pointer-events: none;
         }
         @keyframes ripple-anim {
@@ -211,7 +211,7 @@ function FloatingActionButton() {
         <button
           type="button"
           onClick={() => setOpen((c) => !c)}
-          className={`fab-main relative flex h-16 w-16 items-center justify-center rounded-full bg-teal-600 text-white shadow-xl outline-none ${open ? 'fab-open' : (isIdle ? 'fab-idle-state' : '')}`}
+          className={`fab-main relative flex h-16 w-16 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl outline-none ${open ? 'fab-open' : (isIdle ? 'fab-idle-state' : '')}`}
         >
           <div
             className="flex items-center justify-center"

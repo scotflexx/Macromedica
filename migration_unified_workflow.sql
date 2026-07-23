@@ -7,12 +7,12 @@ ALTER TABLE public.rdv
 DROP CONSTRAINT IF EXISTS rdv_status_check;
 
 -- Fallback safety for legacy rows
-UPDATE public.rdv SET status = 'scheduled' WHERE status IS NULL;
+UPDATE public.rdv SET status = 'confirme' WHERE status IS NULL;
 
 -- Apply rigorous constraint matching the frontend state machine
 ALTER TABLE public.rdv 
 ADD CONSTRAINT rdv_status_check 
-CHECK (status IN ('scheduled', 'arrived', 'in_consultation', 'completed', 'paid', 'credit', 'absent'));
+CHECK (status IN ('confirme', 'arrive', 'en_attente', 'en_consultation', 'a_encaisser', 'termine', 'absent', 'annule'));
 
 -- 2. Bind Consultations explicitly to their driving Appointment (RDV)
 -- This eliminates orphaned consultation data and ties clinical notes securely to the timeline.

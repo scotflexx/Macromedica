@@ -1,6 +1,15 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { RDV_STATUSES } from '../lib/workflow'
+import { normalizeRole, toLegacyRole } from '../lib/rbac'
+import { getDoctors, getTodayVisits, subscribeClinicPayments, subscribeClinicVisits } from '../lib/visitService'
+import {
+  MOCK_PATIENTS,
+  MOCK_RDV,
+  MOCK_VISITS,
+  MOCK_DOCTORS,
+  MOCK_CONSULTATIONS,
+} from '../lib/mockData'
 
 const AppContext = createContext(null)
 const PREFS_KEY = 'macromedica-notification-prefs'
@@ -15,17 +24,19 @@ export function AppProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isInitializing, setIsInitializing] = useState(true)
 
-  const [patients, setPatients] = useState([])
-  const [rdvList, setRdvList] = useState([])
-  const [consultations, setConsultations] = useState([])
-  const cabinetId = profile?.cabinet_id
+  const [patients, setPatients] = useState(MOCK_PATIENTS)
+  const [rdvList, setRdvList] = useState(MOCK_RDV)
+  const [visits, setVisits] = useState(MOCK_VISITS)
+  const [doctors, setDoctors] = useState(MOCK_DOCTORS)
+  const [consultations, setConsultations] = useState(MOCK_CONSULTATIONS)
+  const cabinetId = profile?.cabinet_id ?? profile?.clinic_id
 
-  // Derived waiting list from rdvList
+  // Derived operational waiting list from visits
   const waitingList = useMemo(() => {
-    return rdvList
-      .filter(r => r.status === RDV_STATUSES.ARRIVED || r.status === RDV_STATUSES.IN_CONSULTATION)
-      .sort((a, b) => new Date(a.date_rdv).getTime() - new Date(b.date_rdv).getTime())
-  }, [rdvList])
+    return visits
+      .filter((visit) => ['waiting', 'called', 'consultation'].includes(visit.status))
+      .sort((a, b) => (a.queue_number || 9999) - (b.queue_number || 9999))
+  }, [visits])
 
   const [toasts, setToasts] = useState([])
   const [globalModal, setGlobalModal] = useState(null)
@@ -35,6 +46,15 @@ export function AppProvider({ children }) {
       return JSON.parse(localStorage.getItem(PREFS_KEY) || '{"email":true,"browser":true,"reminders":true}')
     } catch {
       return { email: true, browser: true, reminders: true }
+    }
+  })
+  
+  // DEV SWITCHER — role override for development only
+  const [devRoleOverride, setDevRoleOverride] = useState(() => {
+    try {
+      return localStorage.getItem('macromedica-dev-role-override') || null
+    } catch {
+      return null
     }
   })
 
@@ -58,35 +78,86 @@ export function AppProvider({ children }) {
   }, [])
 
   const loadPatients = useCallback(async (cId) => {
-    const { data } = await supabase.from('patients').select('*').eq('cabinet_id', cId).order('created_at', { ascending: false })
-    setPatients(data || [])
+    try {
+      const { data, error } = await supabase.from('patients').select('*').eq('cabinet_id', cId).order('created_at', { ascending: false })
+      if (error) {
+        console.error('Patients load error:', error)
+        setPatients(MOCK_PATIENTS)
+        return
+      }
+      setPatients(data && data.length > 0 ? data : MOCK_PATIENTS)
+    } catch (err) {
+      console.error('Patients load error:', err)
+      setPatients(MOCK_PATIENTS)
+    }
   }, [])
 
   const loadRdv = useCallback(async (cId) => {
-    const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Africa/Casablanca' })
-    const { data } = await supabase
-      .from('rdv')
-      .select(`*, patients(id, nom, prenom, telephone)`)
-      .eq('cabinet_id', cId)
-      .gte('date_rdv', `${today}T00:00:00`)
-      .lte('date_rdv', `${today}T23:59:59`)
-      .order('date_rdv', { ascending: true })
-    setRdvList(data || [])
+    try {
+      const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Africa/Casablanca' })
+      const { data, error } = await supabase
+        .from('rdv')
+        .select(`*, patients(id, nom, prenom, telephone)`)
+        .eq('cabinet_id', cId)
+        .gte('date_rdv', `${today}T00:00:00`)
+        .lte('date_rdv', `${today}T23:59:59`)
+        .order('date_rdv', { ascending: true })
+      if (error) {
+        console.error('Rdv load error:', error)
+        setRdvList(MOCK_RDV)
+        return
+      }
+      setRdvList(data && data.length > 0 ? data : MOCK_RDV)
+    } catch (err) {
+      console.error('Rdv load error:', err)
+      setRdvList(MOCK_RDV)
+    }
   }, [])
 
   const loadConsultations = useCallback(async (cId) => {
-    const { data } = await supabase.from('consultations').select(`*, patients(nom, prenom)`).eq('cabinet_id', cId).order('date_consult', { ascending: false })
-    setConsultations(data || [])
+    try {
+      const { data, error } = await supabase.from('consultations').select(`*, patients(nom, prenom)`).eq('cabinet_id', cId).order('date_consult', { ascending: false })
+      if (error) {
+        console.error('Consultations load error:', error)
+        setConsultations(MOCK_CONSULTATIONS)
+        return
+      }
+      setConsultations(data && data.length > 0 ? data : MOCK_CONSULTATIONS)
+    } catch (err) {
+      console.error('Consultations load error:', err)
+      setConsultations(MOCK_CONSULTATIONS)
+    }
+  }, [])
+
+  const loadVisits = useCallback(async (cId) => {
+    try {
+      const data = await getTodayVisits(cId)
+      setVisits(data && data.length > 0 ? data : MOCK_VISITS)
+    } catch (err) {
+      console.error('Visits load error:', err?.message || err?.code || err)
+      setVisits(MOCK_VISITS)
+    }
+  }, [])
+
+  const loadDoctors = useCallback(async (cId) => {
+    try {
+      const data = await getDoctors(cId)
+      setDoctors(data && data.length > 0 ? data : MOCK_DOCTORS)
+    } catch (err) {
+      console.error('Doctors load error:', err)
+      setDoctors(MOCK_DOCTORS)
+    }
   }, [])
 
   // Handle a valid session — set user + profile + authenticated
   const handleSession = useCallback(async (session) => {
     if (!session?.user) {
-      // No session — clear everything
+      // No session — keep mock data visible so the UI looks full
       currentUserIdRef.current = null
       setUser(null)
       setProfile(null)
       setIsAuthenticated(false)
+      // Keep mock data visible (already set as initial state)
       return
     }
 
@@ -106,21 +177,23 @@ export function AppProvider({ children }) {
          Promise.all([
            loadPatients(prof.cabinet_id),
            loadRdv(prof.cabinet_id),
-           loadConsultations(prof.cabinet_id)
+           loadConsultations(prof.cabinet_id),
+           loadVisits(prof.cabinet_id),
+           loadDoctors(prof.cabinet_id)
          ]).catch(console.error)
       }
     } else {
-      // Profile not found yet (new signup) — build minimal profile from user metadata
+      // Profile not found yet (new signup / invite) — build from user metadata
       const meta = session.user.user_metadata || {}
       setProfile({
         id: session.user.id,
         nom_complet: meta.nom_complet || 'Utilisateur',
-        role: 'docteur',
-        cabinet_id: null,
-        clinics: null
+        role: meta.role || 'docteur',
+        cabinet_id: meta.cabinet_id || null,
+        clinic_id: meta.clinic_id || null,
       })
     }
-  }, [fetchProfile])
+  }, [fetchProfile, loadPatients, loadRdv, loadConsultations, loadVisits, loadDoctors])
 
   useEffect(() => {
     // SINGLE source of truth: getSession() on mount, then listen for changes.
@@ -129,9 +202,9 @@ export function AppProvider({ children }) {
     
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       await handleSession(session)
-      initDoneRef.current = true
-      setIsInitializing(false)
-    }).catch(() => {
+    }).catch(err => {
+      console.error('Session error:', err)
+    }).finally(() => {
       initDoneRef.current = true
       setIsInitializing(false)
     })
@@ -144,6 +217,8 @@ export function AppProvider({ children }) {
 
         if (event === 'SIGNED_IN') {
           await handleSession(session)
+        } else if (event === 'USER_UPDATED' && session?.user) {
+          await handleSession(session)
         } else if (event === 'SIGNED_OUT') {
           currentUserIdRef.current = null
           setUser(null)
@@ -152,6 +227,9 @@ export function AppProvider({ children }) {
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           // Only update user object, don't re-fetch profile
           setUser(session.user)
+        } else if (event === 'USER_UPDATED' && !session) {
+          // Handle invalid refresh token by signing out
+          await supabase.auth.signOut()
         }
         // Ignore INITIAL_SESSION — already handled by getSession
       }
@@ -164,11 +242,20 @@ export function AppProvider({ children }) {
     localStorage.setItem(PREFS_KEY, JSON.stringify(notificationPrefs))
   }, [notificationPrefs])
 
+  // DEV SWITCHER — persist role override
+  useEffect(() => {
+    if (devRoleOverride) {
+      localStorage.setItem('macromedica-dev-role-override', devRoleOverride)
+    } else {
+      localStorage.removeItem('macromedica-dev-role-override')
+    }
+  }, [devRoleOverride])
+
   useEffect(() => {
     if (!cabinetId) return
 
     // Centralized realtime sync for the dashboard / waiting room
-    const channel = supabase
+    const rdvChannel = supabase
       .channel('app-global-sync')
       .on(
         'postgres_changes',
@@ -177,10 +264,19 @@ export function AppProvider({ children }) {
       )
       .subscribe()
 
+    const visitChannel = subscribeClinicVisits(cabinetId, () => loadVisits(cabinetId))
+    const paymentChannel = subscribeClinicPayments(cabinetId, () => {
+      loadVisits(cabinetId)
+      loadConsultations(cabinetId)
+      window.dispatchEvent(new CustomEvent('mm:payments-changed'))
+    })
+
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(rdvChannel)
+      supabase.removeChannel(visitChannel)
+      supabase.removeChannel(paymentChannel)
     }
-  }, [cabinetId, loadRdv])
+  }, [cabinetId, loadRdv, loadVisits, loadConsultations])
 
   const pushToast = (toast) => {
     const id = buildId('toast')
@@ -218,7 +314,9 @@ export function AppProvider({ children }) {
            Promise.all([
              loadPatients(prof.cabinet_id),
              loadRdv(prof.cabinet_id),
-             loadConsultations(prof.cabinet_id)
+             loadConsultations(prof.cabinet_id),
+             loadVisits(prof.cabinet_id),
+             loadDoctors(prof.cabinet_id)
            ]).catch(console.error)
         }
       } else {
@@ -252,12 +350,27 @@ export function AppProvider({ children }) {
     window.location.href = '/'
   }
 
-  const role = profile?.role || 'docteur'
+  // DEV SWITCHER — use dev override first, then real profile role
+  const baseRole = devRoleOverride || profile?.role || 'doctor'
+  const canonicalRole = normalizeRole(baseRole)
+  const role = toLegacyRole(canonicalRole)
+
+  // Optimistically update a single visit's status
+  const updateVisitStatus = useCallback((visitId, newStatus) => {
+    setVisits(current => current.map(visit => 
+      visit.id === visitId 
+        ? { ...visit, status: newStatus }
+        : visit
+    ))
+  }, [])
 
   const value = useMemo(() => ({
     user,
     profile,
     role,
+    canonicalRole,
+    devRoleOverride,
+    setDevRoleOverride,
     cabinet: profile?.clinics,
     cabinetId: profile?.cabinet_id,
     currentUser: profile
@@ -286,22 +399,30 @@ export function AppProvider({ children }) {
     rdvList,
     appointments: rdvList,
     consultations,
+    visits,
+    doctors,
     waitingList,
     invoices: [],
     staff: [],
     getPatientName: () => 'Patient...',
 
+    updateVisitStatus,
+
     refreshPatients: () => profile?.cabinet_id && loadPatients(profile.cabinet_id),
     refreshRdv: () => profile?.cabinet_id && loadRdv(profile.cabinet_id),
     refreshConsultations: () => profile?.cabinet_id && loadConsultations(profile.cabinet_id),
+    refreshVisits: () => profile?.cabinet_id && loadVisits(profile.cabinet_id),
+    refreshDoctors: () => profile?.cabinet_id && loadDoctors(profile.cabinet_id),
     refreshAll: () => {
       if (profile?.cabinet_id) {
         loadPatients(profile.cabinet_id)
         loadRdv(profile.cabinet_id)
         loadConsultations(profile.cabinet_id)
+        loadVisits(profile.cabinet_id)
+        loadDoctors(profile.cabinet_id)
       }
     },
-  }), [user, profile, role, isAuthenticated, isInitializing, toasts, globalModal, confirmDialog, notificationPrefs, patients, rdvList, consultations, waitingList])
+  }), [user, profile, role, canonicalRole, isAuthenticated, isInitializing, toasts, globalModal, confirmDialog, notificationPrefs, patients, rdvList, consultations, visits, doctors, waitingList, updateVisitStatus])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

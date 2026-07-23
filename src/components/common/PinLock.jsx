@@ -78,8 +78,8 @@ export default function PinLock({ children }) {
       
       {/* Lock UI */}
       <div className="relative z-10 bg-white/90 backdrop-blur-xl border border-white/20 shadow-2xl rounded-[32px] p-8 max-w-sm w-full mx-4 flex flex-col items-center animate-in fade-in zoom-in duration-300">
-        <div className="w-16 h-16 rounded-full bg-teal-50 flex items-center justify-center mb-6 shadow-inner">
-          <Lock className="w-8 h-8 text-teal-600" />
+        <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mb-6 shadow-inner">
+          <Lock className="w-8 h-8 text-blue-600" />
         </div>
         
         <h2 className="text-xl font-bold text-slate-900 mb-2">Zone sécurisée</h2>
@@ -94,7 +94,7 @@ export default function PinLock({ children }) {
               key={i} 
               className={`w-4 h-4 rounded-full transition-all duration-300 ${
                 i < pin.length 
-                  ? 'bg-teal-600 scale-110 shadow-[0_0_12px_rgba(13,148,136,0.5)]' 
+                  ? 'bg-blue-600 scale-110 shadow-[0_0_12px_rgba(59,130,246,0.5)]' 
                   : 'bg-slate-200'
               }`} 
             />
@@ -109,7 +109,7 @@ export default function PinLock({ children }) {
         )}
         
         {loading && (
-          <Loader2 className="w-6 h-6 animate-spin text-teal-600 mb-6" />
+          <Loader2 className="w-6 h-6 animate-spin text-blue-600 mb-6" />
         )}
 
         {/* Virtual Numpad */}
@@ -118,7 +118,7 @@ export default function PinLock({ children }) {
             <button
               key={num}
               onClick={() => appendNum(num)}
-              className="w-16 h-16 rounded-full text-2xl font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-700 active:bg-teal-100 transition-colors mx-auto"
+              className="w-16 h-16 rounded-full text-2xl font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 active:bg-blue-100 transition-colors mx-auto"
             >
               {num}
             </button>
@@ -126,7 +126,7 @@ export default function PinLock({ children }) {
           <div /> {/* Empty space for alignment */}
           <button
             onClick={() => appendNum(0)}
-            className="w-16 h-16 rounded-full text-2xl font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-700 active:bg-teal-100 transition-colors mx-auto"
+            className="w-16 h-16 rounded-full text-2xl font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 active:bg-blue-100 transition-colors mx-auto"
           >
             0
           </button>

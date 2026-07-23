@@ -27,6 +27,7 @@ export interface Patient {
   cabinet_id: string
   nom: string
   prenom: string
+  cin?: string
   telephone?: string
   date_naissance?: string
   email?: string
@@ -111,4 +112,67 @@ export interface VueMetriquesJour {
   patients_aujourd_hui: number
   ca_aujourd_hui: number
   credits_aujourd_hui: number
+}
+
+// ─── Task Management ─────────────────────────────────────────────────────────
+
+export type TaskType =
+  | 'RESULT'
+  | 'PRESCRIPTION'
+  | 'FOLLOW_UP'
+  | 'PHONE_CALL'
+  | 'ADMIN'
+  | 'REFERRAL'
+  | 'OTHER'
+
+export type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL'
+
+export type TaskStatus =
+  | 'NEW'
+  | 'IN_PROGRESS'
+  | 'WAITING'
+  | 'DONE'
+  | 'ARCHIVED'
+
+export type TaskDueDatePreset = 'TODAY' | 'TOMORROW' | 'THIS_WEEK' | 'CUSTOM'
+
+export type ReminderPreset = '1H' | 'TODAY' | 'TOMORROW' | 'CUSTOM'
+
+export interface Task {
+  id: string
+  patientId?: string
+  consultationId?: string
+  patientName?: string
+
+  title: string
+  notes?: string
+
+  type: TaskType
+  priority: TaskPriority
+  status: TaskStatus
+
+  dueDate: string | Date
+  assignedTo: string
+  reminderAt?: string | Date
+
+  createdBy: string
+  createdAt: string | Date
+
+  completedBy?: string
+  completedAt?: string | Date
+}
+
+export interface NewTaskFormData {
+  patientId: string
+  patientName: string
+  title: string
+  notes: string
+  type: TaskType
+  priority: TaskPriority
+  dueDatePreset: TaskDueDatePreset
+  customDueDate: string
+  assignedTo: string
+  reminderEnabled: boolean
+  reminderPreset: ReminderPreset
+  customReminderDate: string
 }

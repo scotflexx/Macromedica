@@ -151,19 +151,19 @@ function OrdonnanceFormModal({ open, onClose, onSuccess }) {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-600">Nom du médecin</span>
-              <input value={form.nomMedecin} onChange={(e) => setForm(c => ({...c, nomMedecin: e.target.value}))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-400" />
+              <input value={form.nomMedecin} onChange={(e) => setForm(c => ({...c, nomMedecin: e.target.value}))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400" />
             </label>
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-600">Spécialité</span>
-              <input value={form.specialite} onChange={(e) => setForm(c => ({...c, specialite: e.target.value}))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-400" />
+              <input value={form.specialite} onChange={(e) => setForm(c => ({...c, specialite: e.target.value}))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400" />
             </label>
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-600">Adresse du cabinet</span>
-              <input value={form.adresse} onChange={(e) => setForm(c => ({...c, adresse: e.target.value}))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-400" />
+              <input value={form.adresse} onChange={(e) => setForm(c => ({...c, adresse: e.target.value}))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400" />
             </label>
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-600">Téléphone</span>
-              <input value={form.telephone} onChange={(e) => setForm(c => ({...c, telephone: e.target.value}))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-400" />
+              <input value={form.telephone} onChange={(e) => setForm(c => ({...c, telephone: e.target.value}))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-400" />
             </label>
           </div>
         </div>
@@ -172,7 +172,7 @@ function OrdonnanceFormModal({ open, onClose, onSuccess }) {
         <div className="grid gap-4 md:grid-cols-3">
           <label className="block md:col-span-2">
             <span className="mb-2 block text-base font-medium text-slate-700">Patient *</span>
-            <select value={form.patient_id} onChange={(e) => setForm(c => ({...c, patient_id: e.target.value}))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300">
+            <select value={form.patient_id} onChange={(e) => setForm(c => ({...c, patient_id: e.target.value}))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300">
               <option value="">— Rechercher un patient —</option>
               {patients.map(p => (
                 <option key={p.id} value={p.id}>{p.prenom} {p.nom} {p.telephone ? `(${p.telephone})` : ''}</option>
@@ -182,11 +182,11 @@ function OrdonnanceFormModal({ open, onClose, onSuccess }) {
           <div className="grid grid-cols-2 gap-4">
             <label className="block">
                <span className="mb-2 block text-base font-medium text-slate-700">Date</span>
-               <input type="date" value={form.date} onChange={(e) => setForm(c => ({...c, date: e.target.value}))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none focus:border-teal-300" />
+               <input type="date" value={form.date} onChange={(e) => setForm(c => ({...c, date: e.target.value}))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none focus:border-blue-300" />
             </label>
             <label className="block">
                <span className="mb-2 block text-base font-medium text-slate-700">Ville</span>
-               <input type="text" value={form.ville} onChange={(e) => setForm(c => ({...c, ville: e.target.value}))} placeholder="Ville" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none focus:border-teal-300" />
+               <input type="text" value={form.ville} onChange={(e) => setForm(c => ({...c, ville: e.target.value}))} placeholder="Ville" className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none focus:border-blue-300" />
             </label>
           </div>
         </div>
@@ -197,27 +197,27 @@ function OrdonnanceFormModal({ open, onClose, onSuccess }) {
           {form.medicaments.map((med, index) => (
             <div key={med.id} className="flex gap-2 items-start">
               <div className="pt-3 font-semibold text-slate-400 w-6 text-center">{index + 1}.</div>
-              <input value={med.nom} onChange={e => handleMedsChange(med.id, 'nom', e.target.value)} placeholder="Nom du médicament (ex: Paracétamol 1g)" className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300" />
-              <input value={med.posologie} onChange={e => handleMedsChange(med.id, 'posologie', e.target.value)} placeholder="Posologie (ex: 1 cp 3x/j)" className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300" />
-              <input value={med.duree} onChange={e => handleMedsChange(med.id, 'duree', e.target.value)} placeholder="Durée (ex: 7 jours)" className="w-32 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300" />
+              <input value={med.nom} onChange={e => handleMedsChange(med.id, 'nom', e.target.value)} placeholder="Nom du médicament (ex: Paracétamol 1g)" className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300" />
+              <input value={med.posologie} onChange={e => handleMedsChange(med.id, 'posologie', e.target.value)} placeholder="Posologie (ex: 1 cp 3x/j)" className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300" />
+              <input value={med.duree} onChange={e => handleMedsChange(med.id, 'duree', e.target.value)} placeholder="Durée (ex: 7 jours)" className="w-32 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300" />
               <button type="button" onClick={() => removeMed(med.id)} className="shrink-0 rounded-2xl border border-slate-200 bg-white p-3 text-slate-400 hover:text-red-500 hover:border-red-200 transition">
                 <Trash2 className="h-5 w-5" />
               </button>
             </div>
           ))}
-          <button type="button" onClick={addMed} className="interactive ml-8 flex items-center gap-2 text-sm font-medium text-teal-600 hover:text-teal-700">
+          <button type="button" onClick={addMed} className="interactive ml-8 flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700">
             <Plus className="h-4 w-4" /> Ajouter un médicament
           </button>
         </div>
 
         <label className="block">
           <span className="mb-2 block text-base font-medium text-slate-700">Notes / Instructions supplémentaires (optionnel)</span>
-          <textarea value={form.instructions} onChange={(e) => setForm(c => ({...c, instructions: e.target.value}))} rows={2} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300" placeholder="A prendre au milieu du repas, etc." />
+          <textarea value={form.instructions} onChange={(e) => setForm(c => ({...c, instructions: e.target.value}))} rows={2} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300" placeholder="A prendre au milieu du repas, etc." />
         </label>
 
         {/* Section 4: Signature */}
         <div className="flex items-center gap-3 rounded-[24px] bg-slate-50 p-4 ring-1 ring-slate-100">
-           <input type="checkbox" id="signe" checked={form.signe} onChange={(e) => setForm(c => ({...c, signe: e.target.checked}))} className="h-5 w-5 rounded border-slate-300 text-teal-600 focus:ring-teal-600" />
+           <input type="checkbox" id="signe" checked={form.signe} onChange={(e) => setForm(c => ({...c, signe: e.target.checked}))} className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
            <label htmlFor="signe" className="text-base font-medium text-slate-700 cursor-pointer select-none">
              Apposer ma signature sur le document
            </label>
@@ -236,7 +236,7 @@ function OrdonnanceFormModal({ open, onClose, onSuccess }) {
 
         <div className="flex justify-end gap-3 pt-2">
           <button type="button" onClick={onClose} className="interactive rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-medium text-slate-700">Annuler</button>
-          <button type="submit" disabled={loading} className="interactive inline-flex items-center gap-2 rounded-2xl bg-teal-600 px-5 py-3 text-base font-medium text-white disabled:opacity-70">
+          <button type="submit" disabled={loading} className="interactive inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-base font-medium text-white disabled:opacity-70">
             {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...</> : 'Générer l\'ordonnance'}
           </button>
         </div>

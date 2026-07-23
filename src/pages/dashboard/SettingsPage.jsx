@@ -1,14 +1,15 @@
-import { LockKeyhole, UserCog, Mail, ShieldX, Loader2, UserPlus } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { LockKeyhole, Loader2, LogOut, Stethoscope, FolderOpen } from 'lucide-react'
+import { useState } from 'react'
 import { ContentCard } from '../../components/dashboard/DashboardPrimitives'
+import SecretaryManagementSection from '../../components/dashboard/SecretaryManagementSection'
 import { useAppContext } from '../../context/AppContext'
 import PinLock from '../../components/common/PinLock'
-import { supabase } from '../../lib/supabase'
 
 function SettingsPage() {
-  const { currentUser, cabinetId, notificationPrefs, setNotificationPrefs, notify, profile: userProfile } = useAppContext()
+  const { currentUser, cabinetId, notificationPrefs, setNotificationPrefs, notify, profile: userProfile, logout, role, canonicalRole, devRoleOverride, setDevRoleOverride } = useAppContext()
   const [profile, setProfile] = useState(currentUser)
   const [loading, setLoading] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
   const [pinEnabled, setPinEnabled] = useState(
     localStorage.getItem(`pin_enabled_${currentUser?.id}`) === 'true'
   )
@@ -16,41 +17,6 @@ function SettingsPage() {
   const [confirmPin, setConfirmPin] = useState('')
   const [pinSaved, setPinSaved] = useState(false)
   const [pinError, setPinError] = useState('')
-
-  // Secretary invitation state
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteLoading, setInviteLoading] = useState(false)
-  const [revokeLoading, setRevokeLoading] = useState(false)
-  const [secretary, setSecretary] = useState(null)
-  const [secLoading, setSecLoading] = useState(true)
-
-  // Load current secretary info
-  useEffect(() => {
-    const loadSecretary = async () => {
-      if (!cabinetId) { setSecLoading(false); return }
-      try {
-        const { data: clinic } = await supabase
-          .from('clinics')
-          .select('secretary_id')
-          .eq('id', cabinetId)
-          .single()
-
-        if (clinic?.secretary_id) {
-          const { data: secProfile } = await supabase
-            .from('profiles')
-            .select('id, nom_complet, role')
-            .eq('id', clinic.secretary_id)
-            .single()
-
-          setSecretary(secProfile || null)
-        } else {
-          setSecretary(null)
-        }
-      } catch { setSecretary(null) }
-      setSecLoading(false)
-    }
-    loadSecretary()
-  }, [cabinetId])
 
   const handleProfileSubmit = async (event) => {
     event.preventDefault()
@@ -107,86 +73,13 @@ function SettingsPage() {
     setTimeout(() => setPinSaved(false), 3000)
   }
 
-  // Invite secretary
-  const handleInvite = async () => {
-    if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
-      notify({ title: 'Erreur', description: 'Veuillez saisir un email valide.', tone: 'error' })
-      return
-    }
-    setInviteLoading(true)
+  const handleLogout = async () => {
+    setLoggingOut(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("Session invalide")
-
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-secretary`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ email: inviteEmail.trim(), clinic_id: cabinetId })
-      })
-
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || "Échec de l'invitation")
-
-      notify({ title: 'Invitation envoyée', description: `Un email a été envoyé à ${inviteEmail}.` })
-      setInviteEmail('')
-      // Refresh secretary info
-      if (result.secretary_id) {
-        const { data: secProfile } = await supabase
-          .from('profiles')
-          .select('id, nom_complet, role')
-          .eq('id', result.secretary_id)
-          .single()
-        setSecretary(secProfile || null)
-      }
+      await logout()
     } catch (err) {
-      notify({ title: 'Erreur', description: err.message, tone: 'error' })
-    } finally {
-      setInviteLoading(false)
-    }
-  }
-
-  // Revoke secretary access
-  const handleRevoke = async () => {
-    if (!secretary) return
-    if (!window.confirm(`Êtes-vous sûr de vouloir révoquer l'accès de ${secretary.nom_complet || 'cette secrétaire'} ?`)) return
-
-    setRevokeLoading(true)
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("Session invalide")
-
-      // 1. Nullify secretary_id in clinics
-      const { error: clinicErr } = await supabase
-        .from('clinics')
-        .update({ secretary_id: null })
-        .eq('id', cabinetId)
-
-      if (clinicErr) throw clinicErr
-
-      // 2. Delete the auth user via Edge Function (admin API)
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-secretary`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ secretary_id: secretary.id, clinic_id: cabinetId })
-      })
-
-      if (!response.ok) {
-        const result = await response.json()
-        throw new Error(result.error || "Échec de la révocation")
-      }
-
-      notify({ title: 'Accès révoqué', description: 'La secrétaire a été retirée.' })
-      setSecretary(null)
-    } catch (err) {
-      notify({ title: 'Erreur', description: err.message, tone: 'error' })
-    } finally {
-      setRevokeLoading(false)
+      notify({ title: 'Erreur', description: err.message || 'Impossible de se déconnecter.', tone: 'error' })
+      setLoggingOut(false)
     }
   }
 
@@ -207,71 +100,21 @@ function SettingsPage() {
             ].map(([key, label]) => (
               <label key={key} className="block">
                 <span className="mb-2 block text-base font-medium text-slate-700">{label}</span>
-                <input value={profile[key] || ''} onChange={(event) => setProfile((current) => ({ ...current, [key]: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300" />
+                <input value={profile[key] || ''} onChange={(event) => setProfile((current) => ({ ...current, [key]: event.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300" />
               </label>
             ))}
-            <button type="submit" disabled={loading} className="interactive rounded-2xl bg-teal-600 px-5 py-3 text-base font-medium text-white disabled:opacity-70">
+            <button type="submit" disabled={loading} className="interactive rounded-2xl bg-blue-600 px-5 py-3 text-base font-medium text-white disabled:opacity-70">
               {loading ? 'Enregistrement...' : 'Sauvegarder'}
             </button>
           </form>
         </ContentCard>
 
         <div className="space-y-6">
-          {/* ─── Gestion Secrétaire ─── */}
-          <ContentCard title="Gestion Secrétaire" subtitle="Inviter ou révoquer l'accès de votre secrétaire">
-            {secLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
-              </div>
-            ) : secretary ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-4 p-4 bg-teal-50 rounded-2xl border border-teal-100">
-                  <div className="w-12 h-12 rounded-full bg-teal-600 text-white flex items-center justify-center text-lg font-bold">
-                    {(secretary.nom_complet || 'S')[0].toUpperCase()}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-slate-900">{secretary.nom_complet || 'Secrétaire'}</div>
-                    <div className="text-xs text-teal-700 font-medium">Secrétaire active</div>
-                  </div>
-                </div>
-                <button
-                  onClick={handleRevoke}
-                  disabled={revokeLoading}
-                  className="interactive w-full rounded-2xl bg-rose-600 px-5 py-3 text-base font-medium text-white disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {revokeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldX className="h-4 w-4" />}
-                  Révoquer l'accès
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                  <UserPlus className="mx-auto mb-2 text-slate-400" size={28} />
-                  <p className="text-sm text-slate-500">Aucune secrétaire associée</p>
-                </div>
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Email de la secrétaire</span>
-                  <div className="flex gap-2">
-                    <input
-                      type="email"
-                      value={inviteEmail}
-                      onChange={e => setInviteEmail(e.target.value)}
-                      placeholder="secretaire@example.com"
-                      className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300 text-sm"
-                    />
-                    <button
-                      onClick={handleInvite}
-                      disabled={inviteLoading}
-                      className="interactive shrink-0 rounded-2xl bg-teal-600 px-5 py-3 text-sm font-medium text-white disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {inviteLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                      Inviter
-                    </button>
-                  </div>
-                </label>
-              </div>
-            )}
-          </ContentCard>
+          <SecretaryManagementSection
+            cabinetId={cabinetId}
+            notify={notify}
+            userRole={canonicalRole || role}
+          />
 
           {/* ─── Sécurité & Accès (PIN) ─── */}
           <div style={{ background: 'white', borderRadius: '16px', padding: '24px', border: '1px solid #e2e8f0' }}>
@@ -290,7 +133,7 @@ function SettingsPage() {
                 onClick={() => togglePin(!pinEnabled)}
                 style={{
                   width: '48px', height: '26px', borderRadius: '999px',
-                  background: pinEnabled ? '#0d9488' : '#e2e8f0',
+                  background: pinEnabled ? '#3B82F6' : '#e2e8f0',
                   border: 'none', cursor: 'pointer', position: 'relative',
                   transition: 'background 0.2s', flexShrink: 0
                 }}
@@ -306,13 +149,13 @@ function SettingsPage() {
 
             {pinEnabled && (
               <div className="mt-6 pt-6 border-t border-slate-100 flex flex-col gap-4 animate-in fade-in slide-in-from-top-2">
-                <div className="bg-teal-50/50 p-4 rounded-xl border border-teal-100 mb-2">
-                  <p className="text-xs font-semibold text-teal-800 mb-2">Actions protégées par le PIN :</p>
-                  <ul className="text-xs text-teal-700 space-y-1">
-                    <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-teal-500"/> Supprimer un patient / RDV</li>
-                    <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-teal-500"/> Modifier un montant</li>
-                    <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-teal-500"/> Statistiques financières</li>
-                    <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-teal-500"/> Paramètres cabinet</li>
+                <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-2">
+                  <p className="text-xs font-semibold text-blue-800 mb-2">Actions protégées par le PIN :</p>
+                  <ul className="text-xs text-blue-700 space-y-1">
+                    <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500"/> Supprimer un patient / RDV</li>
+                    <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500"/> Modifier un montant</li>
+                    <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500"/> Statistiques financières</li>
+                    <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500"/> Paramètres cabinet</li>
                   </ul>
                 </div>
                 
@@ -329,7 +172,7 @@ function SettingsPage() {
                     maxLength={4}
                     value={newPin}
                     onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center tracking-[1em] font-mono text-xl outline-none focus:border-teal-400"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center tracking-[1em] font-mono text-xl outline-none focus:border-blue-400"
                     placeholder="••••"
                   />
                 </div>
@@ -341,14 +184,14 @@ function SettingsPage() {
                     maxLength={4}
                     value={confirmPin}
                     onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center tracking-[1em] font-mono text-xl outline-none focus:border-teal-400"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center tracking-[1em] font-mono text-xl outline-none focus:border-blue-400"
                     placeholder="••••"
                   />
                 </div>
                 
                 <button
                   onClick={savePin}
-                  className="interactive mt-2 w-full rounded-xl bg-teal-600 px-5 py-3 text-sm font-bold text-white transition-all shadow-md shadow-teal-500/20 active:scale-[0.98]"
+                  className="interactive mt-2 w-full rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition-all shadow-md shadow-blue-500/20 active:scale-[0.98]"
                 >
                   {pinSaved ? 'Enregistré ✓' : 'Enregistrer le PIN'}
                 </button>
@@ -366,10 +209,77 @@ function SettingsPage() {
               ].map(([key, label]) => (
                 <label key={key} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-100">
                   <span className="text-base font-medium text-slate-700">{label}</span>
-                  <input type="checkbox" checked={Boolean(notificationPrefs[key])} onChange={(event) => setNotificationPrefs((current) => ({ ...current, [key]: event.target.checked }))} className="h-5 w-5 rounded border-slate-300 text-teal-600" />
+                  <input type="checkbox" checked={Boolean(notificationPrefs[key])} onChange={(event) => setNotificationPrefs((current) => ({ ...current, [key]: event.target.checked }))} className="h-5 w-5 rounded border-slate-300 text-blue-600" />
                 </label>
               ))}
             </div>
+          </ContentCard>
+
+          {/* ─── Dev Tools (Développement uniquement) ─── */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center">
+                <div className="w-5 h-5 rounded bg-amber-400/80" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Dev Tools
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Aperçu rôle actif
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl mb-4">
+              <button
+                onClick={() => setDevRoleOverride('doctor')}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                  (devRoleOverride || canonicalRole) === 'doctor' 
+                    ? 'bg-white text-slate-900 shadow-sm' 
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <Stethoscope size={18} />
+                Médecin
+              </button>
+              <button
+                onClick={() => setDevRoleOverride('secretary')}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                  (devRoleOverride || canonicalRole) === 'secretary' 
+                    ? 'bg-white text-slate-900 shadow-sm' 
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <FolderOpen size={18} />
+                Secrétaire
+              </button>
+            </div>
+
+            <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <div className="text-amber-600 text-xl">⚠️</div>
+              <div className="text-xs text-amber-800 font-medium leading-relaxed">
+                Ce switcher est disponible en mode développement uniquement.{' '}
+                <button
+                  onClick={() => setDevRoleOverride(null)}
+                  className="underline font-semibold hover:text-amber-900"
+                >
+                  Réinitialiser
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <ContentCard title="Session" subtitle="Déconnectez-vous de votre compte sur cet appareil">
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="interactive flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-medium text-slate-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+            >
+              {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+              {loggingOut ? 'Déconnexion...' : 'Se déconnecter'}
+            </button>
           </ContentCard>
         </div>
         </div>

@@ -1,22 +1,38 @@
+
 import { CheckCircle2, CircleAlert, X } from 'lucide-react'
 import { useAppContext } from '../../context/AppContext'
+import { cn } from '../../lib/utils'
 
 function ToastViewport() {
   const { toasts, dismissToast } = useAppContext()
 
   return (
-    <div className="pointer-events-none fixed right-4 top-4 z-[100] flex w-full max-w-sm flex-col gap-3">
+    <div className="pointer-events-none fixed bottom-6 right-6 z-[9999] flex w-full max-w-sm flex-col gap-3">
       {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto surface-card flex items-start gap-3 p-4">
-          <div className={toast.tone === 'error' ? 'text-rose-600' : 'text-teal-600'}>
-            {toast.tone === 'error' ? <CircleAlert className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+        <div 
+          key={toast.id} 
+          className={cn(
+            "pointer-events-auto relative bg-white border-l-4 rounded-lg shadow-lg p-4 pr-10 transition-all duration-300 animate-in slide-in-from-right",
+            toast.tone === 'error' ? 'border-red-500' : 'border-green-500'
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <div className={cn("w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0", 
+              toast.tone === 'error' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
+            )}>
+              {toast.tone === 'error' ? <CircleAlert size={20} /> : <CheckCircle2 size={20} />}
+            </div>
+            <div>
+              {toast.title && <p className="font-semibold text-gray-900">{toast.title}</p>}
+              {toast.description && <p className="text-sm text-gray-700 font-medium mt-1">{toast.description}</p>}
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-base font-semibold text-slate-950">{toast.title}</p>
-            {toast.description ? <p className="mt-1 text-base text-slate-500">{toast.description}</p> : null}
-          </div>
-          <button type="button" onClick={() => dismissToast(toast.id)} className="rounded-xl p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
-            <X className="h-4 w-4" />
+          <button 
+            type="button" 
+            onClick={() => dismissToast(toast.id)} 
+            className="absolute top-3 right-3 w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center transition-colors"
+          >
+            <X size={16} className="text-gray-600" />
           </button>
         </div>
       ))}

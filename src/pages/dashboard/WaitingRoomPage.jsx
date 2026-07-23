@@ -21,7 +21,7 @@ const getInitials = (prenom, nom) =>
   `${(prenom?.[0] || '').toUpperCase()}${(nom?.[0] || '').toUpperCase()}`
 
 const AVATAR_COLORS = [
-  'bg-teal-50 text-teal-700',
+  'bg-blue-50 text-blue-700',
   'bg-blue-50 text-blue-700',
   'bg-amber-50 text-amber-700',
   'bg-rose-50 text-rose-700',
@@ -152,7 +152,7 @@ export default function WaitingRoomPage() {
   const todayRdv = rdvList
 
   const enAttente = useMemo(() =>
-    todayRdv.filter(r => r.status === RDV_STATUSES.ARRIVED)
+    todayRdv.filter(r => r.status === RDV_STATUSES.ARRIVED || r.status === RDV_STATUSES.WAITING)
       .sort((a, b) => new Date(a.updated_at || a.date_rdv) - new Date(b.updated_at || b.date_rdv)),
     [todayRdv]
   )
@@ -214,7 +214,7 @@ export default function WaitingRoomPage() {
   }
 
   const terminerConsultation = async (rdvId) => {
-    const ok = await transitionStatus(rdvId, RDV_STATUSES.COMPLETED)
+    const ok = await transitionStatus(rdvId, RDV_STATUSES.TO_BE_PAID)
     if (ok) notify({ title: 'Consultation terminée' })
   }
 
@@ -286,7 +286,8 @@ export default function WaitingRoomPage() {
             <span className="bg-[#E2E8F0] text-[#64748B] text-[11px] font-bold px-3 py-1 rounded-full">{enAttente.length} patients</span>
           </div>
           
-          <div className="flex-1 overflow-y-auto space-y-4 pr-2 pb-4 scrollbar-hide">
+          <motion.div layout className="flex-1 overflow-y-auto space-y-4 pr-2 pb-4 scrollbar-hide">
+            <AnimatePresence initial={false}>
             {resteAttente.map(rdv => {
               const p = rdv.patients
               const initials = getInitials(p?.prenom, p?.nom)
@@ -296,7 +297,12 @@ export default function WaitingRoomPage() {
               const motif = rdv.motif || (waitMins % 2 === 0 ? "SUIVI" : "CONSULTATION") // Mock variation for visuals
 
               return (
-                <div key={rdv.id} className="bg-white rounded-[28px] p-5 shadow-[0_8px_30px_rgb(0,0,0,0.03)] border border-transparent hover:border-[#0F6E56]/10 transition-colors">
+                <motion.div
+                  key={rdv.id}
+                  layout
+                  {...queueCardMotion}
+                  className="bg-white rounded-[28px] p-5 shadow-[0_8px_30px_rgb(0,0,0,0.03)] border border-transparent hover:border-[#0F6E56]/10 transition-colors"
+                >
                   <div className="flex items-start gap-4">
                     {/* Avatar */}
                     <div className={`w-[50px] h-[50px] rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${getAvatarTheme(rdv.id)}`}>
@@ -329,15 +335,21 @@ export default function WaitingRoomPage() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               )
             })}
+            </AnimatePresence>
             {resteAttente.length === 0 && (
-              <div className="bg-white/50 backdrop-blur-sm rounded-[28px] p-8 text-center border border-dashed border-[#CBD5E1]">
+              <motion.div
+                layout
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="bg-white/50 backdrop-blur-sm rounded-[28px] p-8 text-center border border-dashed border-[#CBD5E1]"
+              >
                 <p className="text-[#94A3B8] font-medium text-sm">Prêt pour le prochain patient</p>
-              </div>
+              </motion.div>
             )}
-          </div>
+          </motion.div>
         </div>
 
         {/* ═══ COLONNE 2: Prochain patient ═══ */}
@@ -361,7 +373,12 @@ export default function WaitingRoomPage() {
                return (
                  <>
                    {/* Main Big Card */}
-                   <div className="bg-white rounded-[32px] overflow-hidden shadow-[0_20px_40px_rgba(15,110,86,0.06)] relative flex flex-col items-center pt-10 pb-8 px-6 border border-white/50">
+                   <motion.div
+                     key={prochainPatient.id}
+                     layout
+                     {...queueCardMotion}
+                     className="bg-white rounded-[32px] overflow-hidden shadow-[0_20px_40px_rgba(15,110,86,0.06)] relative flex flex-col items-center pt-10 pb-8 px-6 border border-white/50"
+                   >
                      {/* Background Chevron Decoration */}
                      <div className="absolute top-8 right-8 text-slate-100 flex gap-1 pointer-events-none">
                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="opacity-50"><path d="m9 18 6-6-6-6"/></svg>
@@ -404,7 +421,7 @@ export default function WaitingRoomPage() {
                      <p className="text-[13px] font-medium text-[#94A3B8] mt-6">
                        <ArrivalTime since={prochainPatient.updated_at || prochainPatient.date_rdv} />
                      </p>
-                   </div>
+                   </motion.div>
 
                    {/* Note de réception (Outside card) */}
                    <div className="bg-[#E4EDE9] rounded-[24px] p-6 text-left border border-white/50">

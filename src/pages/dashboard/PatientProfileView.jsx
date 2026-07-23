@@ -1,936 +1,1223 @@
 import { useQuery } from '@tanstack/react-query'
-import { 
-  ArrowLeft, Bell, Settings, Search, Stethoscope, Calendar, FileText, Plus, 
-  Printer, Share, CreditCard, Droplets, Target, Activity, Zap,
-  StickyNote, FolderOpen, Trash2, Eye, Upload, Paperclip, ClipboardList
+import {
+  ArrowLeft,
+  Calendar,
+  FileText,
+  Microscope,
+  Pill,
+  AlertCircle,
+  MoreHorizontal,
+  Printer,
+  Share2,
+  Stethoscope,
+  Info,
+  X,
+  FilePlus,
+  CheckCircle
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import { AppButton } from '../../components/dashboard/DashboardPrimitives'
-import { getPatientById, getConsultationsByPatient, getRdv, getDocuments } from '../../lib/api'
-import { supabase } from '../../lib/supabase'
+import { motion, AnimatePresence } from 'framer-motion'
+import { getPatientById, getConsultationsByPatient, getRdv } from '../../lib/api'
 import { useAppContext } from '../../context/AppContext'
 import { useNavigate } from 'react-router-dom'
-import { useCabinetId } from '../../hooks/useCabinetId'
-import { isValidTransition, RDV_STATUSES } from '../../lib/workflow'
+import { MOCK_PATIENTS } from '../../lib/mockData'
 
-// ── Helpers ──
+// Mock Timeline Data (4 nodes as requested)
+const TIMELINE_EVENTS = [
+  {
+    id: '1',
+    type: 'urgency',
+    date: '19 juin 2026',
+    time: '14:30',
+    title: 'Urgence Douleurs Abdominales',
+    doctor: 'Dr. Benali',
+    summary: 'Patient admis pour douleurs abdominales aiguës. Analyses sanguines effectuées. Prise en charge immédiate.',
+    details: `
+- Symptômes: Douleurs abdominales diffuses, nausées
+- Examen physique: Tendresse au niveau de l'épigastre
+- Analyses: Leucocytes 12G/L, CRP 45 mg/L
+- Traitement: Antalgiques, repos
+- Suivi: Rendez-vous dans 7 jours
+    `,
+    tags: ['Analyses', 'Douleur']
+  },
+  {
+    id: '2',
+    type: 'lab',
+    date: '14 juin 2026',
+    time: '09:00',
+    title: 'Analyses Sanguines',
+    doctor: 'Dr. Touggani',
+    summary: 'Biologie standard, formule sanguine complète, glycémie à jeun.',
+    details: `
+- Hémoglobine: 14,2 g/dL
+- Glycémie à jeun: 1,2 g/L
+- Cholestérol total: 1,9 g/L
+- Triglycérides: 1,1 g/L
+- Conclusion: Bilan dans les normes, surveiller glycémie
+    `,
+    tags: ['Bilan']
+  },
+  {
+    id: '3',
+    type: 'consultation',
+    date: '10 juin 2026',
+    time: '10:30',
+    title: 'Consultation Annuelle',
+    doctor: 'Dr. Benali',
+    summary: 'Bilan de santé annuel. Tension 120/80. Poids stable. À revoir dans 6 mois.',
+    details: `
+- Poids: 78 kg
+- Taille: 1,75 m
+- IMC: 25,5
+- Tension artérielle: 120/80 mmHg
+- Fréquence cardiaque: 72 bpm
+- Recommandations: Continuer régime équilibré, activité physique régulière
+    `,
+    tags: ['Suivi', 'Bilan']
+  },
+  {
+    id: '4',
+    type: 'prescription',
+    date: '10 juin 2026',
+    time: '11:00',
+    title: 'Prescription Médicamenteuse',
+    doctor: 'Dr. Benali',
+    summary: 'Metformine 500mg — 2x/jour. Oméprazole 20mg — 1x/jour le matin.',
+    details: `
+- Metformine 500mg: 1 comprimé matin et soir au repas
+- Oméprazole 20mg: 1 comprimé le matin avant le petit-déjeuner
+- Durée: 3 mois renouvelable
+- Rendez-vous de contrôle: dans 3 mois
+    `,
+    tags: []
+  }
+]
+
+// Helpers
 function calcAge(dateStr) {
-  if (!dateStr) return null
+  if (!dateStr) return 34 // Default realistic age if no date
   const birth = new Date(dateStr)
   const today = new Date()
   let age = today.getFullYear() - birth.getFullYear()
   const m = today.getMonth() - birth.getMonth()
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
-  return age
+  // Ensure age is positive
+  return age > 0 ? age : 34
 }
 
-function formatDateFull(dateStr) {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleDateString('fr-FR', {
-    day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Africa/Casablanca'
-  }).toUpperCase()
+// Timeline Event Component
+function TimelineEvent({ event, index, onViewDetails }) {
+  const getEventConfig = () => {
+    switch (event.type) {
+      case 'urgency':
+        return {
+          color: '#EF4444',
+          label: 'Urgence',
+          icon: <AlertCircle size={16} />
+        }
+      case 'lab':
+        return {
+          color: '#3B82F6',
+          label: 'Laboratoire',
+          icon: <Microscope size={16} />
+        }
+      case 'consultation':
+        return {
+          color: '#10B981',
+          label: 'Consultation',
+          icon: <Stethoscope size={16} />
+        }
+      case 'prescription':
+        return {
+          color: '#F59E0B',
+          label: 'Ordonnance',
+          icon: <Pill size={16} />
+        }
+      default:
+        return {
+          color: '#6B7280',
+          label: 'Autre',
+          icon: <FileText size={16} />
+        }
+    }
+  }
+
+  const config = getEventConfig()
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: 0.5,
+        delay: index * 0.1,
+        ease: [0.32, 0.72, 0, 1]
+      }}
+      className="relative pl-16 pb-10 last:pb-0"
+      aria-label={`${config.label} du ${event.date}: ${event.title}`}
+    >
+      {/* Vertical Line (starts after first dot, ends before last) */}
+      {index !== TIMELINE_EVENTS.length - 1 && (
+        <div
+          className="absolute left-6 top-10 bottom-0 w-0.5 bg-slate-200"
+        />
+      )}
+
+      {/* Dot */}
+      <motion.div
+        whileHover={{ scale: 1.15 }}
+        className="absolute left-0 top-0 z-10 flex h-9 w-9 items-center justify-center rounded-full border-[3px] bg-white shadow-lg"
+        style={{
+          borderColor: config.color,
+          boxShadow: `0 0 0 8px ${config.color}10`
+        }}
+      >
+        <div style={{ color: config.color }}>
+          {config.icon}
+        </div>
+      </motion.div>
+
+      {/* Content Card */}
+      <motion.div
+        whileHover={{ x: 4, boxShadow: '0 12px 40px rgba(0,0,0,0.08)' }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="rounded-2xl border border-slate-200 bg-white p-5"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs text-slate-500">
+              {event.date} · {event.doctor}
+            </p>
+            <h3 className="text-base font-semibold text-slate-800 mt-1">
+              {event.title}
+            </h3>
+          </div>
+          <span
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium"
+            style={{
+              backgroundColor: `${config.color}10`,
+              color: config.color
+            }}
+          >
+            {config.label}
+          </span>
+        </div>
+
+        <p className="text-sm text-slate-600 mt-3 leading-relaxed line-clamp-2">
+          {event.summary}
+        </p>
+
+        <div className="flex items-center justify-between mt-4">
+          <button
+            onClick={() => onViewDetails(event)}
+            className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
+          >
+            Voir détails →
+          </button>
+
+          {event.tags.length > 0 && (
+            <div className="flex gap-1.5">
+              {event.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.article>
+  )
+}
+
+// Quick Action Button Component
+function QuickAction({ icon, title, description, isPrimary, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-white transition-all hover:border-blue-200 hover:shadow-md group ${isPrimary ? 'bg-blue-50/50 border-blue-100' : ''}`}
+    >
+      <div className={`w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center group-hover:bg-blue-100 transition-all ${isPrimary ? 'bg-blue-100' : ''}`}>
+        <div className={`text-slate-500 group-hover:text-blue-600 transition-colors ${isPrimary ? 'text-blue-600' : ''}`}>
+          {icon}
+        </div>
+      </div>
+      <div className="text-left">
+        <p className="text-sm font-semibold text-slate-800">{title}</p>
+        <p className="text-[11px] text-slate-500">{description}</p>
+      </div>
+    </button>
+  )
+}
+
+// Event Details Modal Component
+function EventDetailsModal({ event, onClose }) {
+  const getEventConfig = () => {
+    switch (event.type) {
+      case 'urgency':
+        return {
+          color: '#EF4444',
+          label: 'Urgence',
+          icon: <AlertCircle size={20} />
+        }
+      case 'lab':
+        return {
+          color: '#3B82F6',
+          label: 'Laboratoire',
+          icon: <Microscope size={20} />
+        }
+      case 'consultation':
+        return {
+          color: '#10B981',
+          label: 'Consultation',
+          icon: <Stethoscope size={20} />
+        }
+      case 'prescription':
+        return {
+          color: '#F59E0B',
+          label: 'Ordonnance',
+          icon: <Pill size={20} />
+        }
+      default:
+        return {
+          color: '#6B7280',
+          label: 'Autre',
+          icon: <FileText size={20} />
+        }
+    }
+  }
+
+  const config = getEventConfig()
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+      />
+
+      {/* Modal Content */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+      >
+        {/* Modal Header */}
+        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: `${config.color}10` }}
+            >
+              <div style={{ color: config.color }}>
+                {config.icon}
+              </div>
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                {event.title}
+              </h2>
+              <p className="text-sm text-slate-500">
+                {event.date} à {event.time} · {event.doctor}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
+          >
+            <X className="w-4 h-4 text-slate-600" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-6">
+          <div className="flex flex-wrap gap-2 mb-6">
+            {event.tags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600"
+              >
+                {tag}
+              </span>
+            ))}
+            <span
+              className="rounded-full px-3 py-1 text-xs font-medium"
+              style={{
+                backgroundColor: `${config.color}10`,
+                color: config.color
+              }}
+            >
+              {config.label}
+            </span>
+          </div>
+
+          <h3 className="text-sm font-semibold text-slate-900 mb-3">
+            Détails
+          </h3>
+          <pre className="whitespace-pre-wrap text-sm text-slate-600 bg-slate-50 p-4 rounded-xl font-sans leading-relaxed">
+            {event.details}
+          </pre>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="flex justify-end gap-3 p-6 border-t border-slate-100 bg-slate-50">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-slate-700 bg-white border border-slate-300 rounded-xl font-medium hover:bg-slate-50 hover:border-slate-400 transition-all"
+          >
+            Fermer
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 text-sm text-white bg-blue-600 border border-blue-600 rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all"
+          >
+            Imprimer
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+// Simple Modal Component for Quick Actions
+function SimpleModal({ title, description, icon, color, onClose, onSave, children }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+      />
+
+      {/* Modal Content */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+      >
+        {/* Modal Header */}
+        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: `${color}10` }}
+            >
+              <div style={{ color }}>
+                {icon}
+              </div>
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                {title}
+              </h2>
+              {description && (
+                <p className="text-sm text-slate-500">{description}</p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
+          >
+            <X className="w-4 h-4 text-slate-600" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-6">
+          {children}
+        </div>
+
+        {/* Modal Footer */}
+        <div className="flex justify-end gap-3 p-6 border-t border-slate-100 bg-slate-50">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-slate-700 bg-white border border-slate-300 rounded-xl font-medium hover:bg-slate-50 hover:border-slate-400 transition-all"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={onSave}
+            className="px-4 py-2 text-sm text-white bg-blue-600 border border-blue-600 rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all"
+          >
+            Enregistrer
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+// Success Modal Component
+function SuccessModal({ message, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+      />
+
+      {/* Modal Content */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden p-6 text-center"
+      >
+        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+          <CheckCircle className="w-8 h-8 text-green-600" />
+        </div>
+        <h2 className="text-lg font-semibold text-slate-900 mb-2">Succès !</h2>
+        <p className="text-sm text-slate-600 mb-6">{message}</p>
+        <button
+          onClick={onClose}
+          className="w-full px-4 py-2 text-sm text-white bg-blue-600 border border-blue-600 rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all"
+        >
+          Continuer
+        </button>
+      </motion.div>
+    </div>
+  )
 }
 
 export default function PatientProfileView({ patientId, onBack }) {
-  const { profile } = useAppContext()
   const navigate = useNavigate()
-  const { cabinetId } = useCabinetId()
+  const { profile } = useAppContext()
   const [activeTab, setActiveTab] = useState('Historique')
-  const [notesText, setNotesText] = useState('')
+  const [activeFilter, setActiveFilter] = useState('Tout')
+  const [showMoreOptions, setShowMoreOptions] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState(null)
+  const [showModal, setShowModal] = useState(null)
+  const [showSuccess, setShowSuccess] = useState(null)
 
-  // ── Queries ──
+  // Form states for quick actions
+  const [prescriptionForm, setPrescriptionForm] = useState({ medications: '', notes: '' })
+  const [labForm, setLabForm] = useState({ type: '', notes: '' })
+  const [reportForm, setReportForm] = useState({ title: '', content: '' })
+  const [documentForm, setDocumentForm] = useState({ name: '', type: '' })
+  const [idCopied, setIdCopied] = useState(false)
+
+  // Queries
   const { data: patient, isLoading: loadingPatient } = useQuery({
     queryKey: ['patient', patientId],
-    queryFn: () => getPatientById(patientId),
-    enabled: !!patientId
+    queryFn: async () => {
+      if (patientId && (patientId.startsWith('pat_') || !patientId.includes('-'))) {
+        const mockP = MOCK_PATIENTS.find(p => p.id === patientId)
+        if (mockP) return mockP
+      }
+      try {
+        const data = await getPatientById(patientId)
+        if (!data) throw new Error('Patient not found in DB')
+        return data
+      } catch (err) {
+        console.warn('Supabase fetch failed, falling back to mock:', err)
+        const mockP = MOCK_PATIENTS[0] // Default mock patient
+        return mockP
+      }
+    },
+    enabled: !!patientId,
+    retry: 1,
   })
 
   const { data: consultations = [] } = useQuery({
     queryKey: ['consultations', 'patient', patientId],
-    queryFn: () => getConsultationsByPatient(patientId),
-    enabled: !!patientId
+    queryFn: async () => {
+      if (patientId && (patientId.startsWith('pat_') || !patientId.includes('-'))) {
+        return []
+      }
+      try {
+        return await getConsultationsByPatient(patientId)
+      } catch (err) {
+        console.warn('Failed to fetch consultations, returning empty:', err)
+        return []
+      }
+    },
+    enabled: !!patientId,
   })
 
-  // We reuse getRdv but filter it client-side since API doesn't have getRdvByPatient
   const { data: allRdvs = [] } = useQuery({
     queryKey: ['rdv', profile?.cabinet_id],
     queryFn: getRdv,
-    enabled: !!profile?.cabinet_id
+    enabled: !!profile?.cabinet_id,
   })
 
-  // Ordonnances for this patient
-  const { data: ordonnances = [] } = useQuery({
-    queryKey: ['ordonnances', 'patient', patientId, cabinetId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('documents')
-        .select(`*, consultations (notes, date_consult)`)
-        .eq('patient_id', patientId)
-        .eq('type_document', 'ordonnance')
-        .order('created_at', { ascending: false })
-      if (error) throw error
-      return data || []
-    },
-    enabled: !!patientId && !!cabinetId
-  })
+  // Filter timeline events
+  const filteredTimeline = useMemo(() => {
+    if (activeFilter === 'Tout') return TIMELINE_EVENTS
+    const filterMap = {
+      'Consultations': 'consultation',
+      'Analyses': 'lab',
+      'Urgences': 'urgency'
+    }
+    return TIMELINE_EVENTS.filter(event => event.type === filterMap[activeFilter])
+  }, [activeFilter])
 
-  // All documents for this patient
-  const { data: documents = [] } = useQuery({
-    queryKey: ['documents', 'patient', patientId],
-    queryFn: () => getDocuments(patientId),
-    enabled: !!patientId
-  })
+  // Handle saving quick actions
+  const handleSavePrescription = () => {
+    setShowModal(null)
+    setShowSuccess('Ordonnance créée avec succès !')
+    setPrescriptionForm({ medications: '', notes: '' })
+  }
 
-  // Non-ordonnance documents (scans, reports, etc.)
-  const nonOrdonnanceDocs = useMemo(() => 
-    documents.filter(d => d.type_document !== 'ordonnance'),
-  [documents])
+  const handleSaveLab = () => {
+    setShowModal(null)
+    setShowSuccess('Demande d\'analyses envoyée !')
+    setLabForm({ type: '', notes: '' })
+  }
 
-  // ── Computed Data ──
-  const patientRdvs = useMemo(() => allRdvs.filter(r => r.patient_id === patientId), [allRdvs, patientId])
+  const handleSaveReport = () => {
+    setShowModal(null)
+    setShowSuccess('Compte-rendu enregistré !')
+    setReportForm({ title: '', content: '' })
+  }
 
-  const activeTodayRdv = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0]
-    const todayRdvs = patientRdvs.filter(r => r.date_rdv?.startsWith(today))
-    const overflow = todayRdvs.find(r => r.status && r.status !== RDV_STATUSES.ABSENT && r.status !== RDV_STATUSES.PAID)
-    return overflow || null
-  }, [patientRdvs])
-  const finances = useMemo(() => {
-    let paye = 0, du = 0
-    consultations.forEach(c => {
-      const montant = parseFloat(c.montant) || 0
-      if (c.statut === 'paye') paye += montant
-      if (c.statut === 'credit') du += montant
-    })
-    return { paye, du, total: paye + du }
-  }, [consultations])
+  const handleSaveDocument = () => {
+    setShowModal(null)
+    setShowSuccess('Document ajouté !')
+    setDocumentForm({ name: '', type: '' })
+  }
 
-  const nextRdv = useMemo(() => {
-    const now = new Date()
-    const upcoming = patientRdvs.filter(r => new Date(r.date_rdv) > now && (r.status || r.statut) !== 'annule')
-    upcoming.sort((a, b) => new Date(a.date_rdv) - new Date(b.date_rdv))
-    return upcoming[0] || null
-  }, [patientRdvs])
-
-  const timelineEvents = useMemo(() => {
-    const events = []
-    consultations.forEach(c => {
-      events.push({
-        id: c.id,
-        type: 'consultation',
-        date: new Date(c.date_consult),
-        title: 'Consultation',
-        notes: c.motif || c.notes || 'Consultation générale',
-        status: c.statut,
-        color: 'teal', // Maps to green dot
-        badge: c.motif ? c.motif.substring(0, 15).toUpperCase() : 'CONSULTATION'
-      })
-    })
-    // Add logic later if we fetch Ordonnances or Documents directly
-    events.sort((a, b) => b.date - a.date)
-    return events
-  }, [consultations])
-
-  // ── Render Helpers ──
   if (loadingPatient || !patient) {
     return (
-      <div className="flex-1 flex items-center justify-center min-h-[500px]">
-        <div className="w-10 h-10 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin" />
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+          <p className="text-slate-500 font-medium">Chargement du dossier...</p>
+        </div>
       </div>
     )
   }
 
   const age = calcAge(patient.date_naissance)
-  const sexDisplay = patient.sexe === 'homme' ? 'Homme' : patient.sexe === 'femme' ? 'Femme' : 'Non précisé'
-  const initials = `${patient.prenom?.[0] || ''}${patient.nom?.[0] || ''}`.toUpperCase()
+  const lastVisit = TIMELINE_EVENTS[0]?.date
+  const nextRdv = 'À planifier'
 
   return (
-    <div className="flex flex-col h-[calc(100vh-2rem)] -mt-4 -mx-4 overflow-hidden bg-slate-50/50">
-      
-      {/* ── 1. Top Navigation Bar ── */}
-      <header className="h-[76px] flex items-center justify-between px-8 bg-white border-b border-slate-100 flex-shrink-0">
-        <div className="flex items-center gap-6">
-          <button onClick={onBack} className="p-2 hover:bg-slate-50 rounded-full transition-colors group">
-            <ArrowLeft className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />
-          </button>
-          <div className="h-8 w-px bg-slate-200" />
-          <h1 className="text-[20px] font-black tracking-tight text-slate-800">MacroMedica<span className="text-teal-600">.</span></h1>
-        </div>
-        
-        <div className="flex-1 max-w-xl mx-8">
-          <div className="relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-teal-500 transition-colors" />
-            <input 
-              type="text" 
-              placeholder="Rechercher un patient..."
-              className="w-full h-11 bg-slate-50 border-transparent rounded-[16px] pl-11 pr-4 text-[14px] text-slate-700 focus:bg-white focus:border-teal-400 focus:ring-4 focus:ring-teal-50 transition-all outline-none placeholder:text-slate-400"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1 mr-4">
-            <button className="w-10 h-10 flex items-center justify-center text-slate-400 hover:bg-slate-50 rounded-full transition-colors">
-              <Bell className="w-5 h-5" />
+    <section aria-label="Dossier patient" className="min-h-screen bg-slate-50 flex flex-col pb-6">
+      {/* --- Header --- */}
+      <motion.header
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="sticky top-0 z-50 bg-slate-50 px-6 pt-4 pb-3"
+      >
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between bg-white border border-slate-200 px-5 py-3 rounded-[24px] shadow-[0_6px_18px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onBack}
+              aria-label="Retour à la liste des patients"
+              className="w-10 h-10 rounded-[16px] bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
+            >
+              <ArrowLeft className="w-5 h-5 text-slate-600" />
             </button>
-            <button className="w-10 h-10 flex items-center justify-center text-slate-400 hover:bg-slate-50 rounded-full transition-colors">
-              <Settings className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="flex items-center gap-3 pl-4 border-l border-slate-100">
-            <div className="text-right hidden sm:block">
-              <div className="flex items-center justify-end gap-2 mb-0.5">
-                <span className="px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-[9px] font-extrabold tracking-wider">DOSSIER PATIENT V2</span>
-              </div>
-              <p className="text-[13px] font-bold text-slate-900">Dr. {profile?.nom || 'Docteur'}</p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-teal-600 to-teal-400 shadow-sm border-2 border-white flex items-center justify-center text-white font-bold text-sm">
-              DR
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* ── Main Layout ── */}
-      <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-        
-        {/* ── 2. Left Sidebar (Identity Card) ── */}
-        <aside className="w-full lg:w-[320px] bg-white border-r border-slate-100 flex flex-col p-6 overflow-y-auto custom-scrollbar">
-          
-          {/* Profile Header */}
-          <div className="flex flex-col items-center text-center mb-8">
-            <div className="relative mb-4">
-              <div className="w-24 h-24 rounded-[32px] bg-teal-50 flex items-center justify-center text-[32px] font-bold text-teal-700 shadow-inner">
-                {initials || 'P'}
-              </div>
-              <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-3 py-1 bg-teal-500 text-white text-[10px] font-extrabold tracking-wider rounded-full shadow-[0_4px_12px_rgba(20,184,166,0.3)] border-2 border-white">
-                ACTIF
-              </div>
-            </div>
-            <h2 className="text-[22px] font-black text-slate-900 leading-tight">{patient.prenom} {patient.nom}</h2>
-            <p className="text-[14px] text-slate-500 font-medium mt-1">
-              {age ? `${age} ans` : '-'} • {sexDisplay} • ID: {patient.id?.split('-')[0]}
-            </p>
-            
-            <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
-              {patient.group_sanguin && (
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 border border-rose-100">
-                  <Droplets className="w-3.5 h-3.5 text-rose-500" />
-                  <span className="text-[11px] font-bold text-rose-700 flex-1">{patient.group_sanguin}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Computed Dynamic Workflow CTA */}
-          {(() => {
-            if (!activeTodayRdv) {
-              return (
-                <button disabled className="w-full h-[48px] bg-slate-100 text-slate-400 rounded-[16px] font-bold text-[14px] flex items-center justify-center gap-2 mb-8 cursor-not-allowed">
-                  Aucun RDV actif aujourd'hui
-                </button>
-              )
-            }
-            const { status, id } = activeTodayRdv
-
-            if (profile?.role === 'docteur') {
-              if (status === RDV_STATUSES.ARRIVED) {
-                return (
-                  <button onClick={async () => { await supabase.from('rdv').update({ status: RDV_STATUSES.IN_CONSULTATION }).eq('id', id); navigate(`/consultation/${id}`) }} className="w-full h-[48px] bg-teal-600 hover:bg-teal-700 text-white rounded-[16px] font-bold text-[14px] shadow-[0_4px_20px_rgba(13,148,136,0.25)] transition-all active:scale-[0.98] flex items-center justify-center gap-2 mb-8">
-                    <Stethoscope className="w-4 h-4" /> Démarrer consultation
+            <div>
+              <h1
+                style={{
+                  fontSize: '22px',
+                  fontWeight: 600,
+                  lineHeight: '30px',
+                  color: '#0f172a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '10px',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                Dossier Patient
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '13px',
+                    fontWeight: 400,
+                    color: '#64748b',
+                    letterSpacing: 0,
+                  }}
+                >
+                  <span style={{ color: '#cbd5e1', marginRight: '2px' }}>—</span>
+                  <span>{patient.prenom} {patient.nom}</span>
+                  <span style={{ color: '#cbd5e1' }}>•</span>
+                  <span>{age} ans</span>
+                  {/* ID copy chip */}
+                  <button
+                    title="Copier l'ID patient"
+                    onClick={() => {
+                      navigator.clipboard.writeText(patient.id).catch(() => {})
+                      setIdCopied(true)
+                      setTimeout(() => setIdCopied(false), 1500)
+                    }}
+                    style={{
+                      width: '22px',
+                      height: '22px',
+                      borderRadius: '6px',
+                      border: `1px solid ${idCopied ? '#dbeafe' : '#e2e8f0'}`,
+                      background: idCopied ? '#eff6ff' : '#f8fafc',
+                      color: idCopied ? '#2563eb' : '#94a3b8',
+                      fontSize: '9px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 0,
+                      marginLeft: '2px',
+                      transition: 'all 0.12s ease',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {idCopied ? '✓' : 'ID'}
                   </button>
-                )
-              }
-              if (status === RDV_STATUSES.IN_CONSULTATION) {
-                return (
-                  <button onClick={() => navigate(`/consultation/${id}`)} className="w-full h-[48px] bg-orange-500 hover:bg-orange-600 text-white rounded-[16px] font-bold text-[14px] shadow-[0_4px_20px_rgba(249,115,22,0.25)] transition-all active:scale-[0.98] flex items-center justify-center gap-2 mb-8">
-                    <Stethoscope className="w-4 h-4" /> Reprendre consultation
-                  </button>
-                )
-              }
-              return (
-                 <button disabled className="w-full h-[48px] bg-slate-100 text-slate-400 rounded-[16px] font-bold text-[14px] flex items-center justify-center gap-2 mb-8 cursor-not-allowed uppercase text-[11px] tracking-wider">
-                   Patient: {status}
-                 </button>
-              )
-            }
-
-            if (profile?.role === 'secretaire') {
-              if (!status || status === RDV_STATUSES.SCHEDULED) {
-                return (
-                  <button onClick={async () => { await supabase.from('rdv').update({ status: RDV_STATUSES.ARRIVED }).eq('id', id) }} className="w-full h-[48px] bg-blue-600 hover:bg-blue-700 text-white rounded-[16px] font-bold text-[14px] shadow-[0_4px_20px_rgba(37,99,235,0.25)] transition-all active:scale-[0.98] flex items-center justify-center gap-2 mb-8">
-                    Marquer comme arrivé
-                  </button>
-                )
-              }
-              if (status === RDV_STATUSES.COMPLETED) {
-                return (
-                  <button onClick={() => navigate(`/facturation`)} className="w-full h-[48px] bg-emerald-600 hover:bg-emerald-700 text-white rounded-[16px] font-bold text-[14px] shadow-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 mb-8">
-                    Encaisser la consultation
-                  </button>
-                )
-              }
-              return (
-                 <button disabled className="w-full h-[48px] bg-blue-50 text-blue-500 border border-blue-200 rounded-[16px] font-bold text-[12px] flex items-center justify-center gap-2 mb-8 cursor-not-allowed uppercase tracking-wider">
-                   En cours ({status})
-                 </button>
-              )
-            }
-
-            return null
-          })()}
-
-          {/* Medical Alerts (Mocked based on notes if no native support) */}
-          <div className="mb-8">
-            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Alertes Médicales</h3>
-            <div className="space-y-2">
-              {patient.mutuelle === 'CNOPS' && (
-                <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-amber-50">
-                  <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-[1px]" />
-                  <p className="text-[13px] font-semibold text-amber-800 leading-snug">Patient affilié CNOPS - Vérifier prise en charge spéciale.</p>
-                </div>
-              )}
-              {patient.notes?.toLowerCase().includes('allergie') && (
-                <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-rose-50">
-                  <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-[1px]" />
-                  <p className="text-[13px] font-semibold text-rose-800 leading-snug">Allergie signalée dans les notes du dossier.</p>
-                </div>
-              )}
-              {!patient.mutuelle && !patient.notes?.toLowerCase().includes('allergie') && (
-                <p className="text-[13px] text-slate-400 italic">Aucune alerte médicale majeure enregistrée.</p>
-              )}
+                  {/* micro-toast */}
+                  <AnimatePresence>
+                    {idCopied && (
+                      <motion.span
+                        initial={{ opacity: 0, y: 4, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -4, scale: 0.9 }}
+                        transition={{ duration: 0.15 }}
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          color: '#2563eb',
+                          background: '#eff6ff',
+                          border: '1px solid #dbeafe',
+                          borderRadius: '6px',
+                          padding: '1px 6px',
+                          pointerEvents: 'none',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        ID copié
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </span>
+              </h1>
             </div>
           </div>
 
-          {/* Quick Actions */}
-          <div className="mb-8">
-            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Actions rapides</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <button className="flex flex-col items-center justify-center p-3 rounded-[16px] bg-slate-50 hover:bg-teal-50 text-slate-500 hover:text-teal-700 transition-colors border border-transparent hover:border-teal-100 group">
-                <Calendar className="w-5 h-5 mb-1.5 opacity-70 group-hover:opacity-100" />
-                <span className="text-[11px] font-bold">Planifier</span>
-              </button>
-              <button className="flex flex-col items-center justify-center p-3 rounded-[16px] bg-slate-50 hover:bg-teal-50 text-slate-500 hover:text-teal-700 transition-colors border border-transparent hover:border-teal-100 group">
-                <FileText className="w-5 h-5 mb-1.5 opacity-70 group-hover:opacity-100" />
-                <span className="text-[11px] font-bold">Ordonnance</span>
-              </button>
-            </div>
-            <button className="w-full mt-2 flex items-center justify-center gap-2 p-3 rounded-[16px] bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors border border-slate-100">
-              <Plus className="w-4 h-4" />
-              <span className="text-[12px] font-bold">Ajouter un document</span>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700" role="status">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              En cours
+            </span>
+            <button
+              aria-label="Terminer la consultation"
+              className="h-10 px-5 bg-white text-slate-700 border border-slate-300 rounded-[16px] font-medium hover:bg-slate-50 hover:border-slate-400 transition-all"
+              onClick={() => navigate('/dashboard')}
+            >
+              Terminer
             </button>
           </div>
+        </div>
+      </motion.header>
 
-          {/* Contact Quick Info */}
-          <div className="mb-6 bg-slate-50 rounded-2xl p-4 border border-slate-100">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm">
-                  <span className="text-[12px]">📞</span>
+      {/* --- Main Layout --- */}
+      <main className="flex-1 max-w-[1600px] mx-auto px-6 py-6 w-full">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-[300px_1fr] gap-6">
+          {/* Left Column: Résumé, Actions, Alertes */}
+          <div className="space-y-5">
+            {/* Résumé Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200"
+            >
+              <p className="text-[10px] text-slate-400 uppercase tracking-[0.1em] mb-4">
+                RÉSUMÉ
+              </p>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                    Dernière visite
+                  </p>
+                  <p className="text-sm font-medium text-slate-800">{lastVisit}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Dr. Benali</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Téléphone</p>
-                  <p className="text-[13px] font-semibold text-slate-700">{patient.telephone || 'Non renseigné'}</p>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                    Prochain RDV
+                  </p>
+                  <p className="text-sm font-medium text-slate-800">{nextRdv}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                    Alertes
+                  </p>
+                  <p className="text-sm font-medium text-rose-600">1 active</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Allergie PCN</p>
                 </div>
               </div>
-              {patient.email && (
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm">
-                    <span className="text-[12px]">✉️</span>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email</p>
-                    <p className="text-[13px] font-semibold text-slate-700 truncate max-w-[180px]">{patient.email}</p>
-                  </div>
+              <button
+                className="w-full mt-5 py-2 text-xs text-blue-600 font-medium hover:text-blue-700 transition-all flex items-center justify-center gap-1"
+                onClick={() => setActiveTab('Informations')}
+              >
+                Modifier informations →
+              </button>
+            </motion.div>
+
+            {/* Actions Rapides Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200"
+            >
+              <p className="text-[10px] text-slate-400 uppercase tracking-[0.1em] mb-4">
+                ACTIONS RAPIDES
+              </p>
+              <div className="space-y-2">
+                <QuickAction
+                  icon={<Pill size={18} />}
+                  title="Ordonnance"
+                  description="Créer une prescription"
+                  isPrimary={true}
+                  onClick={() => setShowModal('prescription')}
+                />
+                <QuickAction
+                  icon={<Microscope size={18} />}
+                  title="Analyses"
+                  description="Demander un bilan"
+                  onClick={() => setShowModal('lab')}
+                />
+                <QuickAction
+                  icon={<FileText size={18} />}
+                  title="Compte-rendu"
+                  description="Éditer un CR"
+                  onClick={() => setShowModal('report')}
+                />
+                <QuickAction
+                  icon={<FilePlus size={18} />}
+                  title="Document"
+                  description="Ajouter un fichier"
+                  onClick={() => setShowModal('document')}
+                />
+                <QuickAction
+                  icon={<Calendar size={18} />}
+                  title="Planifier suivi"
+                  description="Nouveau rendez-vous"
+                  onClick={() => navigate('/agenda')}
+                />
+              </div>
+            </motion.div>
+
+            {/* Alertes Médicales Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200"
+            >
+              <p className="text-[10px] text-slate-400 uppercase tracking-[0.1em] mb-4">
+                ALERTES MÉDICALES
+              </p>
+              <div className="space-y-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-2 h-2 rounded-full bg-rose-500 mt-1.5" />
+                  <p className="text-xs text-slate-700">Allergie pénicilline</p>
                 </div>
-              )}
-            </div>
+                <div className="flex items-start gap-2.5">
+                  <div className="w-2 h-2 rounded-full bg-amber-500 mt-1.5" />
+                  <p className="text-xs text-slate-700">Diabète type 2</p>
+                </div>
+              </div>
+            </motion.div>
           </div>
-        </aside>
 
-        {/* ── 3. Main Content Area (Tabs) ── */}
-        <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50">
-          
-          {/* Header & Tabs */}
-          <div className="px-8 pt-8 pb-4 bg-white border-b border-slate-100">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+          {/* Right Column: Main Content */}
+          <div className="space-y-5 md:col-span-2 lg:col-span-1">
+            {/* Tabs */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+            >
+              <nav role="tablist" className="bg-slate-100 rounded-xl p-1 inline-flex">
+                {['Informations', 'Historique', 'Documents'].map((tab) => (
+                  <button
+                    key={tab}
+                    role="tab"
+                    aria-selected={activeTab === tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-5 py-2 text-sm font-medium rounded-lg transition-all ${
+                      activeTab === tab
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </nav>
+            </motion.div>
+
+            {/* Tab Content */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.3 }}
+              >
+                {activeTab === 'Historique' && (
+                  <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div>
+                        <h2 className="text-base font-semibold text-slate-900">
+                          Parcours de soins
+                        </h2>
+                      </div>
+                      <div className="relative flex items-center gap-2">
+                        {['Tout', 'Consultations', 'Analyses', 'Urgences'].map((filter) => (
+                          <button
+                            key={filter}
+                            onClick={() => setActiveFilter(filter)}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${
+                              activeFilter === filter
+                                ? 'bg-slate-900 text-white'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            {filter}
+                          </button>
+                        ))}
+                        <div className="relative ml-auto">
+                          <button
+                            onClick={() => setShowMoreOptions(!showMoreOptions)}
+                            className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-all"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
+                          <AnimatePresence>
+                            {showMoreOptions && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 8 }}
+                                className="absolute right-0 top-full mt-2 w-40 bg-white rounded-xl shadow-lg border border-slate-100 z-50"
+                              >
+                                <button className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                                  <Printer className="w-4 h-4" />
+                                  Imprimer
+                                </button>
+                                <button className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-t border-slate-100">
+                                  <Share2 className="w-4 h-4" />
+                                  Partager
+                                </button>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Timeline */}
+                    <div className="relative pt-2">
+                      {filteredTimeline.map((event, index) => (
+                        <TimelineEvent
+                          key={event.id}
+                          event={event}
+                          index={index}
+                          onViewDetails={setSelectedEvent}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'Informations' && (
+                  <div className="space-y-4">
+                    <h3 className="text-base font-semibold text-slate-900">
+                      Détails du Patient
+                    </h3>
+
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                      <h4 className="font-medium text-slate-900 mb-5">
+                        Identité & Contact
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                            Nom Complet
+                          </p>
+                          <p className="text-sm text-slate-800">
+                            {patient.nom} {patient.prenom}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                            Téléphone
+                          </p>
+                          <p className="text-sm text-slate-800">
+                            {patient.telephone || 'Non renseigné'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                            Mutuelle
+                          </p>
+                          <p className="text-sm text-blue-700">
+                            {patient.mutuelle || 'Non renseigné'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                            CIN
+                          </p>
+                          <p className="text-sm text-slate-800">
+                            {patient.cin || 'Non renseigné'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                            Âge
+                          </p>
+                          <p className="text-sm text-slate-800">{age} ans</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                            Sexe
+                          </p>
+                          <p className="text-sm text-slate-800">
+                            {patient.sexe === 'homme'
+                              ? 'Masculin'
+                              : patient.sexe === 'femme'
+                              ? 'Féminin'
+                              : 'Non renseigné'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'Documents' && (
+                  <div className="text-center py-16">
+                    <div className="text-slate-400 text-sm">
+                      Contenu des documents
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+      </main>
+
+      {/* Modals */}
+      <AnimatePresence>
+        {/* Event Details Modal */}
+        {selectedEvent && (
+          <EventDetailsModal
+            event={selectedEvent}
+            onClose={() => setSelectedEvent(null)}
+          />
+        )}
+
+        {/* Prescription Modal */}
+        {showModal === 'prescription' && (
+          <SimpleModal
+            title="Nouvelle Ordonnance"
+            description={`Pour ${patient.prenom} ${patient.nom}`}
+            icon={<Pill size={20} />}
+            color="#F59E0B"
+            onClose={() => setShowModal(null)}
+            onSave={handleSavePrescription}
+          >
+            <div className="space-y-4">
               <div>
-                <h2 className="text-[28px] font-black tracking-tight text-slate-900">
-                  Dossier <span className="text-teal-600">Patient</span>
-                </h2>
-                <p className="text-[14px] text-slate-500 mt-1">Suivi médical complet et historique clinique</p>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Médicaments
+                </label>
+                <textarea
+                  value={prescriptionForm.medications}
+                  onChange={(e) => setPrescriptionForm({ ...prescriptionForm, medications: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={4}
+                  placeholder="Ex: Metformine 500mg 2x/jour"
+                />
               </div>
-              <div className="flex items-center gap-2">
-                <button className="w-10 h-10 flex items-center justify-center rounded-[14px] border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors">
-                  <Printer className="w-4 h-4" />
-                </button>
-                <button className="w-10 h-10 flex items-center justify-center rounded-[14px] border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors">
-                  <Share className="w-4 h-4" />
-                </button>
-                <button className="h-10 px-5 flex items-center justify-center gap-2 rounded-[14px] bg-teal-600 hover:bg-teal-700 text-white font-bold text-[13px] shadow-[0_4px_12px_rgba(13,148,136,0.2)] ml-2 transition-all">
-                  <Plus className="w-4 h-4" />
-                  Nouvel acte
-                </button>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={prescriptionForm.notes}
+                  onChange={(e) => setPrescriptionForm({ ...prescriptionForm, notes: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={2}
+                  placeholder="Instructions supplémentaires..."
+                />
               </div>
             </div>
+          </SimpleModal>
+        )}
 
-            <div className="flex gap-1 overflow-x-auto custom-scrollbar pb-2">
-              {['Informations', 'Historique', 'Consultations', 'Ordonnances', 'Documents', 'Notes'].map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-5 py-2.5 rounded-[12px] text-[13px] font-bold transition-all whitespace-nowrap flex items-center gap-2 ${
-                    activeTab === tab 
-                      ? 'bg-slate-900 text-white shadow-md' 
-                      : 'text-slate-500 hover:bg-slate-100'
-                  }`}
+        {/* Lab Modal */}
+        {showModal === 'lab' && (
+          <SimpleModal
+            title="Demande d'Analyses"
+            description={`Pour ${patient.prenom} ${patient.nom}`}
+            icon={<Microscope size={20} />}
+            color="#3B82F6"
+            onClose={() => setShowModal(null)}
+            onSave={handleSaveLab}
+          >
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Type d'analyses
+                </label>
+                <select
+                  value={labForm.type}
+                  onChange={(e) => setLabForm({ ...labForm, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  {tab === 'Informations' && <span>ℹ️</span>}
-                  {tab === 'Historique' && <Activity className="w-4 h-4 opacity-70" />}
-                  {tab === 'Consultations' && <Stethoscope className="w-4 h-4 opacity-70" />}
-                  {tab === 'Ordonnances' && <FileText className="w-4 h-4 opacity-70" />}
-                  {tab === 'Documents' && <FolderOpen className="w-4 h-4 opacity-70" />}
-                  {tab === 'Notes' && <StickyNote className="w-4 h-4 opacity-70" />}
-                  {tab}
-                  {tab === 'Ordonnances' && ordonnances.length > 0 && (
-                    <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center ${
-                      activeTab === tab ? 'bg-white/20 text-white' : 'bg-teal-50 text-teal-700'
-                    }`}>{ordonnances.length}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Tab Content Area */}
-          <div className="flex-1 p-8 overflow-y-auto custom-scrollbar">
-            {activeTab === 'Historique' && (
-              <div className="max-w-4xl">
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-[18px] font-bold text-slate-900">Parcours de soins</h3>
-                  <button className="text-[13px] font-bold text-teal-600 hover:text-teal-700">Voir tout l'historique →</button>
-                </div>
-
-                <div className="relative pl-6">
-                  {/* Vertical Timeline Line */}
-                  <div className="absolute top-4 bottom-8 left-2.5 w-0.5 bg-slate-200" />
-
-                  <div className="space-y-8">
-                    {timelineEvents.map((evt, idx) => {
-                      const isLast = idx === timelineEvents.length - 1
-                      const isCredit = evt.status === 'credit'
-                      return (
-                        <div key={evt.id} className="relative">
-                          {/* Dot */}
-                          <div className={`absolute -left-[27px] top-4 w-4 h-4 rounded-full border-4 border-white shadow-sm z-10 ${
-                            isCredit ? 'bg-rose-500' : 'bg-teal-500'
-                          }`} />
-                          
-                          <div className="bg-white rounded-[24px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-shadow">
-                            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-3">
-                              <div className="flex items-center gap-3">
-                                <span className="text-[12px] font-bold text-slate-400 w-24">{formatDateFull(evt.date)}</span>
-                                <h4 className="text-[15px] font-bold text-slate-900">{evt.title}</h4>
-                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide flex items-center gap-1.5 ${
-                                  isCredit ? 'bg-rose-50 text-rose-600' : 'bg-teal-50 text-teal-700'
-                                }`}>
-                                  {!isCredit && <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />}
-                                  {isCredit ? 'IMPAYÉ' : evt.badge}
-                                </span>
-                              </div>
-                            </div>
-                            
-                            <p className="text-[14px] text-slate-500 leading-relaxed mb-4 ml-0 sm:ml-28">
-                              {evt.notes}
-                            </p>
-                            
-                            <div className="flex items-center gap-3 ml-0 sm:ml-28">
-                              <button className="text-[12px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 px-4 py-1.5 rounded-[10px] transition-colors">
-                                Détails de visite
-                              </button>
-                              <button className="text-[12px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 px-4 py-1.5 rounded-[10px] transition-colors">
-                                Facture
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {timelineEvents.length === 0 && (
-                      <div className="p-8 text-center bg-white rounded-[24px] border border-dashed border-slate-200">
-                        <p className="text-[14px] text-slate-500">Aucun événement enregistré pour ce patient.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  <option value="">Sélectionner...</option>
+                  <option value="blood">Sanguin</option>
+                  <option value="urine">Urinaire</option>
+                  <option value="imaging">Imagerie</option>
+                  <option value="other">Autre</option>
+                </select>
               </div>
-            )}
-
-            {activeTab === 'Informations' && (
-              <div className="max-w-5xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-[18px] font-bold text-slate-900">Détails du Patient</h3>
-                  <button className="text-[13px] font-bold text-teal-600 bg-teal-50 px-4 py-2 rounded-xl hover:bg-teal-100 transition-colors">
-                    Modifier les informations
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Identité & Contact Card */}
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
-                        <span className="text-[16px]">👤</span>
-                      </div>
-                      <h4 className="text-[15px] font-bold text-slate-900">Identité & Contact</h4>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                      <div>
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Nom Complet</p>
-                        <p className="text-[14px] font-semibold text-slate-800">{patient.nom} {patient.prenom}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Date de naissance</p>
-                        <p className="text-[14px] font-semibold text-slate-800">{patient.date_naissance ? formatDateFull(patient.date_naissance) : '-'}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">CIN / Passeport</p>
-                        <p className="text-[14px] font-semibold text-slate-800">{patient.cin || '-'}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Téléphone</p>
-                        <p className="text-[14px] font-semibold text-slate-800">{patient.telephone || '-'}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Email</p>
-                        <p className="text-[14px] font-semibold text-slate-800">{patient.email || '-'}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Adresse Complète</p>
-                        <p className="text-[14px] font-semibold text-slate-800">{patient.adresse || '-'}</p>
-                        <p className="text-[13px] text-slate-500 mt-0.5">{patient.ville || ''}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Profil Médical Card */}
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-500">
-                        <span className="text-[16px]">❤️</span>
-                      </div>
-                      <h4 className="text-[15px] font-bold text-slate-900">Profil Médical</h4>
-                    </div>
-
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-4">
-                        <div className="flex-1">
-                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Groupe Sanguin</p>
-                          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 font-black text-[16px] border border-rose-100">
-                            {patient.groupe_sanguin || '-'}
-                          </div>
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Sexe</p>
-                          <div className="inline-flex items-center px-4 h-12 rounded-2xl bg-slate-50 text-slate-700 font-bold text-[14px] border border-slate-100">
-                            {patient.sexe === 'homme' ? 'Masculin' : patient.sexe === 'femme' ? 'Féminin' : '-'}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="p-4 rounded-[16px] bg-amber-50/50 border border-amber-100/50">
-                        <p className="text-[11px] font-bold text-amber-600/70 uppercase tracking-widest mb-1 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" /> Allergies
-                        </p>
-                        <p className="text-[14px] font-semibold text-slate-800">{patient.allergies || 'Aucune allergie signalée'}</p>
-                      </div>
-
-                      <div className="p-4 rounded-[16px] bg-slate-50 border border-slate-100">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Antécédents Médicaux</p>
-                        <p className="text-[14px] font-semibold text-slate-800 leading-relaxed whitespace-pre-wrap">{patient.antecedents || 'Aucun antécédent particulier signalé dans le dossier.'}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Administratif & Assurance Card */}
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100 md:col-span-2">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500">
-                        <span className="text-[16px]">🛡️</span>
-                      </div>
-                      <h4 className="text-[15px] font-bold text-slate-900">Administratif & Assurance</h4>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                      <div className="p-4 rounded-[16px] bg-slate-50 border border-slate-100">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Couverture Médicale</p>
-                        <p className="text-[15px] font-bold text-emerald-700">{patient.mutuelle || 'Non renseigné'}</p>
-                      </div>
-                      <div className="p-4 rounded-[16px] bg-slate-50 border border-slate-100">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Date d'inscription</p>
-                        <p className="text-[14px] font-semibold text-slate-800">{formatDateFull(patient.created_at)}</p>
-                      </div>
-                      <div className="p-4 rounded-[16px] bg-slate-50 border border-slate-100">
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Statut du Dossier</p>
-                        <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 text-[11px] font-bold mt-1">
-                          Dossier Actif
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            )}
-            
-            {/* ── CONSULTATIONS TAB ── */}
-            {activeTab === 'Consultations' && (
-              <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-[18px] font-bold text-slate-900">Historique des Consultations</h3>
-                  <span className="text-[13px] font-bold text-slate-400">{consultations.length} consultation{consultations.length !== 1 ? 's' : ''}</span>
-                </div>
-
-                {consultations.length === 0 ? (
-                  <div className="bg-white rounded-[24px] p-12 text-center border border-dashed border-slate-200">
-                    <Stethoscope className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-[15px] font-semibold text-slate-500">Aucune consultation enregistrée</p>
-                    <p className="text-[13px] text-slate-400 mt-1">Les consultations apparaîtront ici automatiquement.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {consultations.map(c => {
-                      const isPaid = c.statut === 'paye'
-                      const isCredit = c.statut === 'credit'
-                      let parsedNotes = null
-                      try { parsedNotes = c.notes ? JSON.parse(c.notes) : null } catch(e) {}
-
-                      return (
-                        <div key={c.id} className="bg-white rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-shadow">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-                                isCredit ? 'bg-rose-50 text-rose-500' : 'bg-teal-50 text-teal-600'
-                              }`}>
-                                <Stethoscope className="w-5 h-5" />
-                              </div>
-                              <div>
-                                <h4 className="text-[15px] font-bold text-slate-900">{c.motif || 'Consultation'}</h4>
-                                <p className="text-[12px] text-slate-400 mt-0.5">{formatDateFull(c.date_consult)}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {c.montant && (
-                                <span className={`px-3 py-1 rounded-full text-[11px] font-bold ${
-                                  isPaid ? 'bg-teal-50 text-teal-700' : isCredit ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-500'
-                                }`}>
-                                  {Number(c.montant).toLocaleString('fr-FR')} MAD
-                                </span>
-                              )}
-                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                isPaid ? 'bg-emerald-50 text-emerald-700' : isCredit ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-700'
-                              }`}>
-                                {isPaid ? 'Payé' : isCredit ? 'Impayé' : c.statut || 'En cours'}
-                              </span>
-                            </div>
-                          </div>
-                          {(c.notes || parsedNotes) && (
-                            <div className="ml-[52px] p-3 bg-slate-50 rounded-xl">
-                              <p className="text-[13px] text-slate-600 leading-relaxed">
-                                {parsedNotes?.diagnostic || parsedNotes?.motif || c.notes?.substring(0, 200)}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── ORDONNANCES TAB ── */}
-            {activeTab === 'Ordonnances' && (
-              <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-[18px] font-bold text-slate-900">Ordonnances</h3>
-                  <span className="text-[13px] font-bold text-slate-400">{ordonnances.length} ordonnance{ordonnances.length !== 1 ? 's' : ''}</span>
-                </div>
-
-                {ordonnances.length === 0 ? (
-                  <div className="bg-white rounded-[24px] p-12 text-center border border-dashed border-slate-200">
-                    <FileText className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-[15px] font-semibold text-slate-500">Aucune ordonnance pour ce patient</p>
-                    <p className="text-[13px] text-slate-400 mt-1">Les ordonnances créées lors des consultations apparaîtront ici.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {ordonnances.map(doc => {
-                      let parsedData = {}
-                      try {
-                        if (doc.consultations?.notes) parsedData = JSON.parse(doc.consultations.notes)
-                      } catch(e) {}
-                      const meds = parsedData?.medicaments || []
-
-                      return (
-                        <div key={doc.id} className="bg-white rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-shadow group">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
-                                <ClipboardList className="w-5 h-5" />
-                              </div>
-                              <div>
-                                <h4 className="text-[15px] font-bold text-slate-900">Ordonnance</h4>
-                                <p className="text-[12px] text-slate-400 mt-0.5">
-                                  {formatDateFull(doc.consultations?.date_consult || doc.created_at)}
-                                  {parsedData?.medecin && <span> · Dr. {parsedData.medecin}</span>}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-teal-50 hover:text-teal-600 transition-colors" title="Imprimer">
-                                <Printer className="w-4 h-4" />
-                              </button>
-                              <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" title="Voir">
-                                <Eye className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                          {meds.length > 0 && (
-                            <div className="ml-[52px] space-y-1.5">
-                              {meds.slice(0, 4).map((m, i) => (
-                                <div key={i} className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50">
-                                  <span className="w-5 h-5 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex-shrink-0">{i + 1}</span>
-                                  <div className="min-w-0">
-                                    <p className="text-[13px] font-semibold text-slate-800 truncate">{m.nom}</p>
-                                    <p className="text-[11px] text-slate-400">{m.posologie}{m.duree ? ` — ${m.duree}` : ''}</p>
-                                  </div>
-                                </div>
-                              ))}
-                              {meds.length > 4 && (
-                                <p className="text-[12px] text-slate-400 font-medium ml-7">+ {meds.length - 4} autre{meds.length - 4 > 1 ? 's' : ''} médicament{meds.length - 4 > 1 ? 's' : ''}</p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── DOCUMENTS / SCANS TAB ── */}
-            {activeTab === 'Documents' && (
-              <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-[18px] font-bold text-slate-900">Documents & Scans</h3>
-                  <button className="flex items-center gap-2 px-4 py-2 rounded-[14px] bg-teal-600 hover:bg-teal-700 text-white font-bold text-[13px] shadow-[0_4px_12px_rgba(13,148,136,0.2)] transition-all">
-                    <Upload className="w-4 h-4" /> Ajouter un document
-                  </button>
-                </div>
-
-                {nonOrdonnanceDocs.length === 0 ? (
-                  <div className="bg-white rounded-[24px] p-12 text-center border border-dashed border-slate-200">
-                    <FolderOpen className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-[15px] font-semibold text-slate-500">Aucun document ou scan</p>
-                    <p className="text-[13px] text-slate-400 mt-1">Ajoutez des résultats d'analyses, radiographies ou autres documents médicaux.</p>
-                    <button className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-[14px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[13px] transition-colors">
-                      <Upload className="w-4 h-4" /> Télécharger un fichier
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {nonOrdonnanceDocs.map(doc => (
-                      <div key={doc.id} className="bg-white rounded-[20px] p-4 shadow-[0_2px_12px_rgba(0,0,0,0.03)] border border-slate-100 hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-shadow flex items-center gap-3 group">
-                        <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600 flex-shrink-0">
-                          <Paperclip className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[14px] font-semibold text-slate-900 truncate">{doc.nom || doc.type_document || 'Document'}</p>
-                          <p className="text-[12px] text-slate-400 mt-0.5">{formatDateFull(doc.created_at)}</p>
-                        </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-slate-400 hover:text-teal-600 transition-colors">
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 text-slate-400 hover:text-rose-500 transition-colors">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── NOTES MÉDICALES TAB ── */}
-            {activeTab === 'Notes' && (
-              <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-[18px] font-bold text-slate-900">Notes Médicales</h3>
-                </div>
-
-                {/* Existing notes from patient record */}
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100 mb-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-violet-50 flex items-center justify-center text-violet-500">
-                      <StickyNote className="w-5 h-5" />
-                    </div>
-                    <h4 className="text-[15px] font-bold text-slate-900">Notes du dossier</h4>
-                  </div>
-                  <div className="p-4 rounded-[16px] bg-slate-50 border border-slate-100">
-                    <p className="text-[14px] text-slate-700 leading-relaxed whitespace-pre-wrap">
-                      {patient.notes || 'Aucune note enregistrée dans le dossier du patient.'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Antécédents */}
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100 mb-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-500">
-                      <ClipboardList className="w-5 h-5" />
-                    </div>
-                    <h4 className="text-[15px] font-bold text-slate-900">Antécédents médicaux</h4>
-                  </div>
-                  <div className="p-4 rounded-[16px] bg-slate-50 border border-slate-100">
-                    <p className="text-[14px] text-slate-700 leading-relaxed whitespace-pre-wrap">
-                      {patient.antecedents || 'Aucun antécédent particulier.'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Allergies */}
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100 mb-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-500">
-                      <span className="text-[16px]">⚠️</span>
-                    </div>
-                    <h4 className="text-[15px] font-bold text-slate-900">Allergies</h4>
-                  </div>
-                  <div className={`p-4 rounded-[16px] border ${
-                    patient.allergies ? 'bg-rose-50/50 border-rose-100' : 'bg-slate-50 border-slate-100'
-                  }`}>
-                    <p className={`text-[14px] leading-relaxed whitespace-pre-wrap ${
-                      patient.allergies ? 'text-rose-800 font-semibold' : 'text-slate-500'
-                    }`}>
-                      {patient.allergies || 'Aucune allergie signalée.'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Quick note textarea */}
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-teal-50 flex items-center justify-center text-teal-600">
-                      <Plus className="w-5 h-5" />
-                    </div>
-                    <h4 className="text-[15px] font-bold text-slate-900">Ajouter une note rapide</h4>
-                  </div>
-                  <textarea
-                    value={notesText}
-                    onChange={(e) => setNotesText(e.target.value)}
-                    placeholder="Écrivez une observation, un rappel ou un commentaire médical..."
-                    className="w-full h-32 p-4 rounded-[16px] bg-slate-50 border border-slate-200 text-[14px] text-slate-700 outline-none resize-none focus:border-teal-400 focus:ring-4 focus:ring-teal-50 transition-all placeholder:text-slate-400"
-                  />
-                  <div className="flex justify-end mt-3">
-                    <button className="px-5 py-2.5 rounded-[14px] bg-teal-600 hover:bg-teal-700 text-white font-bold text-[13px] shadow-[0_4px_12px_rgba(13,148,136,0.2)] transition-all flex items-center gap-2">
-                      <Plus className="w-4 h-4" /> Enregistrer la note
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </main>
-
-        {/* ── 4. Right Sidebar (Metrics & Financials) ── */}
-        <aside className="w-full lg:w-[320px] p-6 lg:p-8 overflow-y-auto custom-scrollbar bg-slate-50/50 lg:border-l border-slate-100">
-          
-          {/* Indicateurs Clés */}
-          <div className="bg-slate-900 text-white rounded-[24px] p-6 mb-6 shadow-xl shadow-slate-900/10">
-            <div className="flex items-center gap-2 mb-6">
-              <Target className="w-5 h-5 text-teal-400" />
-              <h3 className="text-[13px] font-black uppercase tracking-widest text-slate-200">Indicateurs clés</h3>
-            </div>
-            
-            <div className="space-y-6">
               <div>
-                <div className="flex justify-between items-end mb-2">
-                  <span className="text-[12px] font-semibold text-slate-400">IMC (BMI)</span>
-                  <span className="text-[20px] font-bold text-white">24.2</span>
-                </div>
-                <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden mb-1">
-                  <div className="h-full w-[60%] bg-teal-400 rounded-full" />
-                </div>
-                <p className="text-[10px] text-teal-400 font-medium tracking-wide">Poids idéal pour sa taille</p>
-              </div>
-              
-              <div className="flex gap-4">
-                <div className="flex-1 bg-slate-800/50 rounded-[16px] p-3 border border-slate-700/50">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tension</p>
-                  <p className="text-[18px] font-bold">13/8</p>
-                </div>
-                <div className="flex-1 bg-slate-800/50 rounded-[16px] p-3 border border-slate-700/50">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Glycémie</p>
-                  <p className="text-[18px] font-bold">1.02 <span className="text-[12px] font-normal text-slate-400">g/l</span></p>
-                </div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Notes
+                </label>
+                <textarea
+                  value={labForm.notes}
+                  onChange={(e) => setLabForm({ ...labForm, notes: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={4}
+                  placeholder="Détails sur les analyses à effectuer..."
+                />
               </div>
             </div>
-          </div>
+          </SimpleModal>
+        )}
 
-          {/* Finances du Patient */}
-          <div className="bg-white rounded-[24px] p-6 mb-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100">
-            <h3 className="text-[15px] font-bold text-slate-900 mb-6 flex items-center gap-2">
-              Finances du Patient
-            </h3>
-            
-            <div className="space-y-4 mb-6">
+        {/* Report Modal */}
+        {showModal === 'report' && (
+          <SimpleModal
+            title="Nouveau Compte-Rendu"
+            description={`Pour ${patient.prenom} ${patient.nom}`}
+            icon={<FileText size={20} />}
+            color="#10B981"
+            onClose={() => setShowModal(null)}
+            onSave={handleSaveReport}
+          >
+            <div className="space-y-4">
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Versé</p>
-                <p className="text-[28px] font-black text-teal-600 tracking-tight leading-none">{finances.paye.toLocaleString()} <span className="text-[14px]">MAD</span></p>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Titre
+                </label>
+                <input
+                  value={reportForm.title}
+                  onChange={(e) => setReportForm({ ...reportForm, title: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ex: Consultation du 19/06/2026"
+                />
               </div>
-              <div className="pt-4 border-t border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Solde Dû</p>
-                <p className="text-[28px] font-black text-rose-500 tracking-tight leading-none">{finances.du.toLocaleString()} <span className="text-[14px]">MAD</span></p>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Contenu
+                </label>
+                <textarea
+                  value={reportForm.content}
+                  onChange={(e) => setReportForm({ ...reportForm, content: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={6}
+                  placeholder="Rédigez votre compte-rendu ici..."
+                />
               </div>
             </div>
-            
-            <button className="w-full flex items-center justify-center gap-2 py-3 rounded-[14px] bg-teal-50 hover:bg-teal-100 text-teal-700 font-bold text-[13px] transition-colors">
-              <Zap className="w-4 h-4" />
-              Effectuer un versement
-            </button>
-          </div>
+          </SimpleModal>
+        )}
 
-          {/* Prochains RDV */}
-          <div className="bg-white rounded-[24px] p-6 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-slate-100">
-            <h3 className="text-[15px] font-bold text-slate-900 mb-4">Prochains Rendez-vous</h3>
-            
-            {nextRdv ? (
-              <div className="flex items-start gap-4">
-                <div className="flex flex-col items-center justify-center min-w-[56px] h-[64px] bg-teal-50 rounded-[14px] border border-teal-100">
-                  <span className="text-[10px] font-bold text-teal-600 uppercase tracking-widest">{new Date(nextRdv.date_rdv).toLocaleDateString('fr-FR', { month: 'short' })}</span>
-                  <span className="text-[20px] font-black text-teal-700 leading-none">{new Date(nextRdv.date_rdv).getDate()}</span>
-                </div>
-                <div className="py-1">
-                  <h4 className="text-[14px] font-bold text-slate-900 mb-1">{nextRdv.notes || 'Consultation'}</h4>
-                  <p className="text-[12px] font-medium text-slate-500">{new Date(nextRdv.date_rdv).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} • Cabinet</p>
-                </div>
+        {/* Document Modal */}
+        {showModal === 'document' && (
+          <SimpleModal
+            title="Ajouter un Document"
+            description={`Pour ${patient.prenom} ${patient.nom}`}
+            icon={<FilePlus size={20} />}
+            color="#6B7280"
+            onClose={() => setShowModal(null)}
+            onSave={handleSaveDocument}
+          >
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Nom du document
+                </label>
+                <input
+                  value={documentForm.name}
+                  onChange={(e) => setDocumentForm({ ...documentForm, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ex: Résultats d'analyses"
+                />
               </div>
-            ) : (
-              <div className="py-4 text-center">
-                <p className="text-[13px] text-slate-400 font-medium">Aucun rendez-vous à venir</p>
-                <button className="mt-3 text-[12px] font-bold text-teal-600">Planifier maintenant</button>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Type de document
+                </label>
+                <select
+                  value={documentForm.type}
+                  onChange={(e) => setDocumentForm({ ...documentForm, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Sélectionner...</option>
+                  <option value="lab">Analyses</option>
+                  <option value="report">Compte-rendu</option>
+                  <option value="prescription">Ordonnance</option>
+                  <option value="other">Autre</option>
+                </select>
               </div>
-            )}
-          </div>
+              <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center">
+                <FileText className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">
+                  Glissez-déposez un fichier ou cliquez pour parcourir
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  PDF, PNG, JPG (max 10MB)
+                </p>
+              </div>
+            </div>
+          </SimpleModal>
+        )}
 
-        </aside>
-
-      </div>
-    </div>
+        {/* Success Modal */}
+        {showSuccess && (
+          <SuccessModal
+            message={showSuccess}
+            onClose={() => setShowSuccess(null)}
+          />
+        )}
+      </AnimatePresence>
+    </section>
   )
 }

@@ -133,14 +133,14 @@ const LandingPage = () => {
                   backdrop-filter: blur(16px) !important;
                   -webkit-backdrop-filter: blur(16px) !important;
                   background: rgba(240,253,249,0.85) !important;
-                  border-bottom: 1px solid rgba(13,148,136,0.1) !important;
+                  border-bottom: 1px solid rgba(59,130,246,0.1) !important;
                 }
                 .glass-card-morphism {
                   background: rgba(255,255,255,0.7) !important;
                   backdrop-filter: blur(12px) !important;
                   -webkit-backdrop-filter: blur(12px) !important;
                   border: 1px solid rgba(255,255,255,0.8) !important;
-                  box-shadow: 0 4px 24px rgba(13,148,136,0.08) !important;
+                  box-shadow: 0 4px 24px rgba(59,130,246,0.08) !important;
                 }
                 
                 @keyframes textShimmer {
@@ -154,7 +154,7 @@ const LandingPage = () => {
                   100% { background-position: 0% 0%; }
                 }
                 .animated-mesh-bg {
-                  background: linear-gradient(180deg, #f0fdf9 0%, #e8f8f5 8%, #f0fdf9 20%, #edfaf7 30%, #f7fffe 40%, #e6f7f4 50%, #f2fbf9 60%, #eafaf7 70%, #f5fffe 80%, #e8f8f5 90%, #0d9488 95%, #0a7c73 100%);
+                  background: linear-gradient(180deg, #f0fdf9 0%, #e8f8f5 8%, #f0fdf9 20%, #edfaf7 30%, #f7fffe 40%, #e6f7f4 50%, #f2fbf9 60%, #eafaf7 70%, #f5fffe 80%, #e8f8f5 90%, #3B82F6 95%, #0a7c73 100%);
                   background-size: 100% 400%;
                   animation: gradientMove 30s ease infinite;
                   min-height: 100vh;
@@ -255,7 +255,7 @@ const LandingPage = () => {
                   gap: 6px;
                 }
                 .sidebar-item.active {
-                  background: rgba(13,148,136,0.2);
+                  background: rgba(59,130,246,0.2);
                   color: white;
                   border-left: 2px solid #14b8a6;
                 }
@@ -292,7 +292,7 @@ const LandingPage = () => {
                 .bell { font-size: 14px; }
                 .avatar {
                   width: 28px; height: 28px;
-                  background: #0d9488;
+                  background: #3B82F6;
                   border-radius: 50%;
                   display: flex;
                   align-items: center;
@@ -325,7 +325,7 @@ const LandingPage = () => {
                 }
                 .stat-value.blue { color: #1d4ed8; }
                 .stat-value.green { color: #15803d; }
-                .stat-value.teal { color: #0d9488; }
+                .stat-value.blue { color: #3B82F6; }
                 .stat-value.gold { color: #854d0e; font-size: 11px; }
                 .stat-badge {
                   font-size: 8px;
@@ -360,10 +360,10 @@ const LandingPage = () => {
                   justify-content: space-between;
                   align-items: center;
                 }
-                .badge-teal {
+                .badge-blue {
                   font-size: 8px;
                   background: #f0fdfa;
-                  color: #0d9488;
+                  color: #3B82F6;
                   border-radius: 999px;
                   padding: 2px 6px;
                   font-weight: 600;
@@ -450,12 +450,12 @@ const LandingPage = () => {
                   border-radius: 3px 3px 0 0;
                   transition: height 0.3s;
                 }
-                .bar.teal {
-                  background: linear-gradient(180deg, #14b8a6, #0d9488);
-                  box-shadow: 0 -2px 6px rgba(13,148,136,0.3);
+                .bar.blue {
+                  background: linear-gradient(180deg, #60a5fa, #3B82F6);
+                  box-shadow: 0 -2px 6px rgba(59,130,246,0.3);
                 }
                 .bar-wrap span { font-size: 8px; color: #94a3b8; font-weight: 500; }
-                .teal-text { color: #0d9488 !important; }
+                .blue-text { color: #3B82F6 !important; }
                 .invoice-row {
                   display: flex;
                   justify-content: space-between;
@@ -472,11 +472,11 @@ const LandingPage = () => {
             `}</style>
             
             <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-                <div style={{ position: 'absolute', width: '700px', height: '700px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(13,148,136,0.18) 0%, rgba(20,184,166,0.08) 50%, transparent 100%)', filter: 'blur(60px)', top: '-200px', left: '-200px', animation: 'drift1 20s ease-in-out infinite' }}></div>
+                <div style={{ position: 'absolute', width: '700px', height: '700px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,0.18) 0%, rgba(20,184,166,0.08) 50%, transparent 100%)', filter: 'blur(60px)', top: '-200px', left: '-200px', animation: 'drift1 20s ease-in-out infinite' }}></div>
                 <div style={{ position: 'absolute', width: '600px', height: '600px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(56,189,248,0.12) 0%, rgba(14,165,233,0.06) 50%, transparent 100%)', filter: 'blur(70px)', top: '-100px', right: '-150px', animation: 'drift2 25s ease-in-out infinite' }}></div>
                 <div style={{ position: 'absolute', width: '500px', height: '500px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(45,212,191,0.15) 0%, rgba(94,234,212,0.06) 50%, transparent 100%)', filter: 'blur(80px)', top: '35%', left: '-100px', animation: 'drift3 18s ease-in-out infinite' }}></div>
-                <div style={{ position: 'absolute', width: '650px', height: '650px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(13,148,136,0.12) 0%, rgba(15,118,110,0.05) 50%, transparent 100%)', filter: 'blur(90px)', top: '55%', right: '-200px', animation: 'drift4 22s ease-in-out infinite' }}></div>
-                <div style={{ position: 'absolute', width: '800px', height: '800px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(20,184,166,0.2) 0%, rgba(13,148,136,0.08) 50%, transparent 100%)', filter: 'blur(100px)', bottom: '-300px', left: '20%', animation: 'drift5 30s ease-in-out infinite' }}></div>
+                <div style={{ position: 'absolute', width: '650px', height: '650px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,0.12) 0%, rgba(15,118,110,0.05) 50%, transparent 100%)', filter: 'blur(90px)', top: '55%', right: '-200px', animation: 'drift4 22s ease-in-out infinite' }}></div>
+                <div style={{ position: 'absolute', width: '800px', height: '800px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(20,184,166,0.2) 0%, rgba(59,130,246,0.08) 50%, transparent 100%)', filter: 'blur(100px)', bottom: '-300px', left: '20%', animation: 'drift5 30s ease-in-out infinite' }}></div>
             </div>
 
             {/* Progress Bar */}
@@ -489,13 +489,13 @@ const LandingPage = () => {
                 <div className="flex justify-between items-center px-8 py-4 max-w-7xl mx-auto">
                     <div className="flex items-center gap-2 group cursor-pointer" onClick={() => window.scrollTo({ top:0, behavior:'smooth' })}>
                         <span className="material-symbols-outlined text-landing-primary text-3xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-90">add</span>
-                        <span className="text-xl font-semibold text-teal-800 font-headline tracking-tight">MacroMedica</span>
+                        <span className="text-xl font-semibold text-blue-800 font-headline tracking-tight">MacroMedica</span>
                     </div>
                     <div className="hidden md:flex items-center gap-8">
-                        <a className="text-slate-600 font-medium font-headline tracking-tight hover:text-teal-500 transition-colors duration-200 cursor-pointer" href="#features" onClick={(e) => { e.preventDefault(); document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }) }}>Fonctionnalités</a>
-                        <a className="text-slate-600 font-medium font-headline tracking-tight hover:text-teal-500 transition-colors duration-200 cursor-pointer" href="#how-it-works" onClick={(e) => { e.preventDefault(); document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' }) }}>Comment ça marche</a>
-                        <a className="text-slate-600 font-medium font-headline tracking-tight hover:text-teal-500 transition-colors duration-200 cursor-pointer" href="#pricing" onClick={(e) => { e.preventDefault(); document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' }) }}>Tarifs</a>
-                        <a className="text-slate-600 font-medium font-headline tracking-tight hover:text-teal-500 transition-colors duration-200 cursor-pointer" href="#testimonials" onClick={(e) => { e.preventDefault(); document.getElementById('testimonials')?.scrollIntoView({ behavior: 'smooth' }) }}>Témoignages</a>
+                        <a className="text-slate-600 font-medium font-headline tracking-tight hover:text-blue-500 transition-colors duration-200 cursor-pointer" href="#features" onClick={(e) => { e.preventDefault(); document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }) }}>Fonctionnalités</a>
+                        <a className="text-slate-600 font-medium font-headline tracking-tight hover:text-blue-500 transition-colors duration-200 cursor-pointer" href="#how-it-works" onClick={(e) => { e.preventDefault(); document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' }) }}>Comment ça marche</a>
+                        <a className="text-slate-600 font-medium font-headline tracking-tight hover:text-blue-500 transition-colors duration-200 cursor-pointer" href="#pricing" onClick={(e) => { e.preventDefault(); document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' }) }}>Tarifs</a>
+                        <a className="text-slate-600 font-medium font-headline tracking-tight hover:text-blue-500 transition-colors duration-200 cursor-pointer" href="#testimonials" onClick={(e) => { e.preventDefault(); document.getElementById('testimonials')?.scrollIntoView({ behavior: 'smooth' }) }}>Témoignages</a>
                     </div>
                     <div className="flex items-center gap-4">
                         <button onClick={() => navigate('/login')} className="px-5 py-2 text-slate-600 font-semibold font-label hover:text-landing-primary transition-colors">Connexion</button>
@@ -508,9 +508,9 @@ const LandingPage = () => {
             <section className="relative pt-20 pb-24 px-8">
                 <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                     <div className="z-10" style={{ width: "100%", overflow: "visible" }}>
-                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur-md border border-teal-100 rounded-full mb-8 shadow-sm">
-                            <span className="material-symbols-outlined text-teal-600 text-sm">auto_awesome</span>
-                            <span className="text-teal-800 text-xs font-bold uppercase tracking-wider">Conçu pour les médecins marocains</span>
+                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur-md border border-blue-100 rounded-full mb-8 shadow-sm">
+                            <span className="material-symbols-outlined text-blue-600 text-sm">auto_awesome</span>
+                            <span className="text-blue-800 text-xs font-bold uppercase tracking-wider">Conçu pour les médecins marocains</span>
                         </div>
                         <h1 className="hero-title text-7xl md:text-8xl font-['Outfit'] font-black mb-8">
                             La gestion <br /> intelligente <br />
@@ -538,7 +538,7 @@ const LandingPage = () => {
                         </div>
                     </div>
                     <div className="relative levitate">
-                        <div className="absolute -inset-20 bg-teal-200/20 blur-[120px] rounded-full"></div>
+                        <div className="absolute -inset-20 bg-blue-200/20 blur-[120px] rounded-full"></div>
                         
                         {/* Coded Dashboard Mockup */}
                         <div className="mockup-wrapper relative z-10 text-left">
@@ -625,7 +625,7 @@ const LandingPage = () => {
                                 </div>
                                 <div className="stat-card">
                                   <div className="stat-label">Consultations</div>
-                                  <div className="stat-value teal">89</div>
+                                  <div className="stat-value blue">89</div>
                                   <div className="stat-badge">↗ ce mois</div>
                                 </div>
                                 <div className="stat-card">
@@ -639,7 +639,7 @@ const LandingPage = () => {
                                 <div className="appointments-card">
                                   <div className="card-title">
                                     Rendez-vous du jour
-                                    <span className="badge-teal">4 aujourd'hui</span>
+                                    <span className="badge-blue">4 aujourd'hui</span>
                                   </div>
                                   <div className="appt-list">
                                     <div className="appt-row">
@@ -708,8 +708,8 @@ const LandingPage = () => {
                                         <span>S</span>
                                       </div>
                                       <div className="bar-wrap active">
-                                        <div className="bar teal" style={{height: '92%'}}></div>
-                                        <span className="teal-text">D</span>
+                                        <div className="bar blue" style={{height: '92%'}}></div>
+                                        <span className="blue-text">D</span>
                                       </div>
                                     </div>
                                   </div>
@@ -751,7 +751,7 @@ const LandingPage = () => {
             </section>
 
             {/* Trust Bar */}
-            <div className="py-12 bg-white/30 backdrop-blur-sm overflow-hidden border-y border-teal-100/50">
+            <div className="py-12 bg-white/30 backdrop-blur-sm overflow-hidden border-y border-blue-100/50">
                 <div className="scrolling-marquee flex items-center gap-24 grayscale opacity-40">
                     <span className="text-2xl font-headline font-bold uppercase tracking-widest whitespace-nowrap">Clinique Agdal</span>
                     <span className="text-2xl font-headline font-bold uppercase tracking-widest whitespace-nowrap">Hôpital Cheikh Zaid</span>
@@ -850,7 +850,7 @@ const LandingPage = () => {
             </section>
 
             {/* Stats Section */}
-            <section className="py-24 text-white relative overflow-hidden" style={{ background: 'rgba(13,148,136,0.85)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.2)', borderBottom: '1px solid rgba(255,255,255,0.2)' }}>
+            <section className="py-24 text-white relative overflow-hidden" style={{ background: 'rgba(59,130,246,0.85)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.2)', borderBottom: '1px solid rgba(255,255,255,0.2)' }}>
                 <div className="absolute inset-0 opacity-10">
                     <div className="absolute -top-24 -left-24 w-96 h-96 bg-white blur-[100px] rounded-full"></div>
                     <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-white blur-[100px] rounded-full"></div>
@@ -1015,7 +1015,7 @@ const LandingPage = () => {
                                     <span className="text-[13px] font-medium text-slate-700">Statistiques d'activité</span>
                                 </li>
                             </ul>
-                            <button onClick={() => navigate('/login')} className="mt-auto w-full py-3 rounded-xl bg-[#14b8a6] hover:bg-[#0f766e] text-white font-bold transition-colors shadow-lg shadow-teal-500/20 text-[13px]">
+                            <button onClick={() => navigate('/login')} className="mt-auto w-full py-3 rounded-xl bg-[#14b8a6] hover:bg-[#2563EB] text-white font-bold transition-colors shadow-lg shadow-blue-500/20 text-[13px]">
                                 Essayer gratuitement
                             </button>
                         </div>
@@ -1062,7 +1062,7 @@ const LandingPage = () => {
                 <div className="max-w-3xl mx-auto">
                     <h2 className="text-4xl font-headline font-light text-center mb-16 reveal text-[#191c1e]">Questions <span className="font-bold text-landing-primary">Fréquentes</span></h2>
                     <div className="space-y-4">
-                        <div className="reveal border-b border-teal-100 pb-4 group cursor-pointer">
+                        <div className="reveal border-b border-blue-100 pb-4 group cursor-pointer">
                             <div className="flex justify-between items-center py-4">
                                 <h4 className="text-lg font-bold group-hover:text-landing-primary transition-colors">Mes données sont-elles stockées au Maroc ?</h4>
                                 <span className="material-symbols-outlined group-hover:rotate-180 transition-transform">expand_more</span>
@@ -1071,7 +1071,7 @@ const LandingPage = () => {
                                 Oui, toutes nos données sont hébergées dans des centres de données certifiés Tier III situés sur le territoire national, conformément aux recommandations de la CNDP.
                             </div>
                         </div>
-                        <div className="reveal border-b border-teal-100 pb-4 group cursor-pointer">
+                        <div className="reveal border-b border-blue-100 pb-4 group cursor-pointer">
                             <div className="flex justify-between items-center py-4">
                                 <h4 className="text-lg font-bold group-hover:text-landing-primary transition-colors">Puis-je importer mon ancienne base de données ?</h4>
                                 <span className="material-symbols-outlined group-hover:rotate-180 transition-transform">expand_more</span>
@@ -1080,7 +1080,7 @@ const LandingPage = () => {
                                 Absolument. Nos ingénieurs vous assistent gratuitement lors de l'importation de vos fichiers Excel ou exportations d'autres logiciels médicaux.
                             </div>
                         </div>
-                        <div className="reveal border-b border-teal-100 pb-4 group cursor-pointer">
+                        <div className="reveal border-b border-blue-100 pb-4 group cursor-pointer">
                             <div className="flex justify-between items-center py-4">
                                 <h4 className="text-lg font-bold group-hover:text-landing-primary transition-colors">Le logiciel fonctionne-t-il sans connexion internet ?</h4>
                                 <span className="material-symbols-outlined group-hover:rotate-180 transition-transform">expand_more</span>
@@ -1097,7 +1097,7 @@ const LandingPage = () => {
             <section className="py-32 px-8">
                 <div className="max-w-7xl mx-auto bg-[#0f172a] text-white rounded-[3rem] p-16 relative overflow-hidden text-center reveal">
                     <div className="absolute -top-24 -left-24 w-64 h-64 bg-landing-primary/20 blur-[100px]"></div>
-                    <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-teal-400/10 blur-[100px]"></div>
+                    <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-blue-400/10 blur-[100px]"></div>
                     <div className="relative z-10">
                         <h2 className="text-5xl md:text-6xl font-headline font-light text-white mb-8">
                             Prêt à moderniser <br /><span className="font-bold">votre pratique ?</span>
@@ -1130,23 +1130,23 @@ const LandingPage = () => {
                     <div>
                         <h4 className="text-white font-bold mb-8">Produit</h4>
                         <ul className="space-y-4">
-                            <li><a className="text-slate-500 hover:text-teal-400 transition-all text-sm cursor-pointer" href="#features" onClick={(e) => { e.preventDefault(); document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }) }}>Fonctionnalités</a></li>
-                            <li><a className="text-slate-500 hover:text-teal-400 transition-all text-sm cursor-pointer" href="#pricing" onClick={(e) => { e.preventDefault(); document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' }) }}>Tarification</a></li>
-                            <li><a className="text-slate-500 hover:text-teal-400 transition-all text-sm cursor-pointer" href="#" onClick={(e) => e.preventDefault()}>Sécurité</a></li>
+                            <li><a className="text-slate-500 hover:text-blue-400 transition-all text-sm cursor-pointer" href="#features" onClick={(e) => { e.preventDefault(); document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }) }}>Fonctionnalités</a></li>
+                            <li><a className="text-slate-500 hover:text-blue-400 transition-all text-sm cursor-pointer" href="#pricing" onClick={(e) => { e.preventDefault(); document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' }) }}>Tarification</a></li>
+                            <li><a className="text-slate-500 hover:text-blue-400 transition-all text-sm cursor-pointer" href="#" onClick={(e) => e.preventDefault()}>Sécurité</a></li>
                         </ul>
                     </div>
                     <div>
                         <h4 className="text-white font-bold mb-8">Support</h4>
                         <ul className="space-y-4">
-                            <li><a className="text-slate-500 hover:text-teal-400 transition-all text-sm cursor-pointer" href="#" onClick={(e) => e.preventDefault()}>Centre d'aide</a></li>
-                            <li><a className="text-slate-500 hover:text-teal-400 transition-all text-sm cursor-pointer" href="#" onClick={(e) => e.preventDefault()}>Contact</a></li>
+                            <li><a className="text-slate-500 hover:text-blue-400 transition-all text-sm cursor-pointer" href="#" onClick={(e) => e.preventDefault()}>Centre d'aide</a></li>
+                            <li><a className="text-slate-500 hover:text-blue-400 transition-all text-sm cursor-pointer" href="#" onClick={(e) => e.preventDefault()}>Contact</a></li>
                         </ul>
                     </div>
                     <div>
                         <h4 className="text-white font-bold mb-8">Légal</h4>
                         <ul className="space-y-4">
-                            <li><a className="text-slate-500 hover:text-teal-400 transition-all text-sm cursor-pointer" href="#" onClick={(e) => e.preventDefault()}>Confidentialité</a></li>
-                            <li><a className="text-slate-500 hover:text-teal-400 transition-all text-sm cursor-pointer" href="#" onClick={(e) => e.preventDefault()}>Conformité CNDP</a></li>
+                            <li><a className="text-slate-500 hover:text-blue-400 transition-all text-sm cursor-pointer" href="#" onClick={(e) => e.preventDefault()}>Confidentialité</a></li>
+                            <li><a className="text-slate-500 hover:text-blue-400 transition-all text-sm cursor-pointer" href="#" onClick={(e) => e.preventDefault()}>Conformité CNDP</a></li>
                         </ul>
                     </div>
                 </div>

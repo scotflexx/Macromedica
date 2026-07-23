@@ -117,7 +117,7 @@ function PrescriptionsPage() {
     }, 100)
   }
 
-  if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="h-10 w-10 animate-spin text-teal-600" /></div>
+  if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="h-10 w-10 animate-spin text-blue-600" /></div>
 
   return (
     <div className="space-y-8 print:m-0 print:p-0">
@@ -165,11 +165,11 @@ function PrescriptionsPage() {
             <ContentCard>
               {/* Toolbar */}
               <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-6">
-                <label className="flex h-12 w-full max-w-md items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 transition hover:border-slate-300 focus-within:border-teal-300 focus-within:ring-2 focus-within:ring-teal-100">
+                <label className="flex h-12 w-full max-w-md items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 transition hover:border-slate-300 focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100">
                   <Search className="h-5 w-5 text-slate-400" />
                   <input value={search} onChange={e => setSearch(e.target.value)} type="text" placeholder="Rechercher par patient..." className="h-full w-full border-0 bg-transparent text-base text-slate-700 outline-none placeholder:text-slate-400" />
                 </label>
-                <select value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-teal-300">
+                <select value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base font-medium text-slate-700 outline-none hover:border-slate-300 focus:border-blue-300">
                   <option value="all">Toutes les dates</option>
                   <option value="week">Cette semaine</option>
                   <option value="month">Ce mois</option>
@@ -184,7 +184,7 @@ function PrescriptionsPage() {
                   return (
                     <div key={doc.id} className="group interactive flex items-center justify-between rounded-[24px] border border-slate-100 bg-white p-4 shadow-sm hover:border-slate-200">
                       <div className="flex items-center gap-4">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-teal-50 text-base font-bold text-teal-700">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-blue-50 text-base font-bold text-blue-700">
                           {patientInitials || 'P'}
                         </div>
                         <div>
@@ -201,7 +201,7 @@ function PrescriptionsPage() {
                         <button type="button" onClick={() => handlePrint(doc)} title="Voir (Brouillon)" className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition">
                           <Eye className="h-4 w-4" />
                         </button>
-                        <button type="button" onClick={() => handlePrint(doc)} title="Imprimer l'ordonnance" className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-600 hover:bg-teal-100 hover:text-teal-700 transition">
+                        <button type="button" onClick={() => handlePrint(doc)} title="Imprimer l'ordonnance" className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition">
                           <Printer className="h-4 w-4" />
                         </button>
                         <button type="button" onClick={() => { if(window.confirm('Supprimer cette ordonnance définitivement ?')) handleDelete(doc.id) }} title="Supprimer" className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-500 hover:bg-red-100 transition">

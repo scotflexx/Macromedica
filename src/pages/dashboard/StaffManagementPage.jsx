@@ -132,7 +132,7 @@ function StaffManagementPage() {
   }
 
   const roleBadgeColors = {
-    medecin: 'bg-teal-50 text-teal-700',
+    medecin: 'bg-blue-50 text-blue-700',
     secretaire: 'bg-blue-50 text-blue-700',
     admin: 'bg-purple-50 text-purple-700',
   }
@@ -148,7 +148,7 @@ function StaffManagementPage() {
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="inline-flex items-center gap-2 rounded-2xl bg-teal-600 px-5 py-3 text-base font-medium text-white shadow-lg shadow-teal-600/20 transition hover:bg-teal-700"
+          className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-base font-medium text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"
         >
           <UserPlus className="h-5 w-5" />
           Ajouter un utilisateur
@@ -157,7 +157,7 @@ function StaffManagementPage() {
 
       {/* Add User Form */}
       {showForm && (
-        <div className="rounded-2xl border border-teal-100 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900 mb-4">Nouveau membre</h2>
           <form onSubmit={handleAddUser} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -167,7 +167,7 @@ function StaffManagementPage() {
                   type="text"
                   value={form.nom_complet}
                   onChange={(e) => setForm(f => ({ ...f, nom_complet: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                   placeholder="Nadia Bennani"
                   required
                 />
@@ -178,7 +178,7 @@ function StaffManagementPage() {
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                   placeholder="nadia@cabinet.ma"
                   required
                 />
@@ -192,7 +192,7 @@ function StaffManagementPage() {
                   type="text"
                   value={form.password}
                   onChange={(e) => setForm(f => ({ ...f, password: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                   placeholder="min. 8 caractères"
                   minLength={8}
                   required
@@ -203,7 +203,7 @@ function StaffManagementPage() {
                 <select
                   value={form.role}
                   onChange={(e) => setForm(f => ({ ...f, role: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all appearance-none cursor-pointer"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all appearance-none cursor-pointer"
                 >
                   <option value="secretaire">Secrétaire</option>
                   <option value="admin">Administrateur</option>
@@ -221,7 +221,7 @@ function StaffManagementPage() {
               <button
                 type="submit"
                 disabled={formLoading}
-                className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-70"
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-70"
               >
                 {formLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Création...</> : <><UserPlus className="h-4 w-4" /> Créer le compte</>}
               </button>
@@ -248,7 +248,7 @@ function StaffManagementPage() {
 
         {loading ? (
           <div className="flex items-center justify-center py-10">
-            <Loader2 className="h-6 w-6 animate-spin text-teal-600" />
+            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
           </div>
         ) : staffList.length === 0 ? (
           <div className="text-center py-10 text-slate-500">
@@ -260,7 +260,7 @@ function StaffManagementPage() {
             {staffList.map((member) => (
               <div key={member.id} className="flex items-center justify-between rounded-2xl border border-gray-100 bg-[#F7F8FA] p-4">
                 <div className="flex items-center gap-4">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-teal-600 text-sm font-bold text-white">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
                     {(member.nom_complet || 'U').slice(0, 2).toUpperCase()}
                   </div>
                   <div>

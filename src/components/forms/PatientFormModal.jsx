@@ -107,7 +107,7 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
     }
   }
 
-  const inputClass = 'w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-teal-300 text-base text-slate-800'
+  const inputClass = 'w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-blue-300 text-base text-slate-800'
   const labelClass = 'mb-2 block text-base font-medium text-slate-700'
 
   return (
@@ -116,7 +116,7 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
 
         {/* ── SECTION 1 — IDENTITÉ ── */}
         <fieldset>
-          <legend className="mb-4 text-base font-semibold uppercase tracking-widest text-teal-700/80">Identité</legend>
+          <legend className="mb-4 text-base font-semibold uppercase tracking-widest text-blue-700/80">Identité</legend>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
               <span className={labelClass}>Prénom <span className="text-rose-500">*</span></span>
@@ -139,7 +139,7 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
                       value={val}
                       checked={form.sexe === val}
                       onChange={(e) => handleChange('sexe', e.target.value)}
-                      className="h-4 w-4 accent-teal-600"
+                      className="h-4 w-4 accent-blue-600"
                     />
                     {lbl}
                   </label>
@@ -157,7 +157,7 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
 
         {/* ── SECTION 2 — CONTACT ── */}
         <fieldset>
-          <legend className="mb-4 text-base font-semibold uppercase tracking-widest text-teal-700/80">Contact</legend>
+          <legend className="mb-4 text-base font-semibold uppercase tracking-widest text-blue-700/80">Contact</legend>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
               <span className={labelClass}>Téléphone</span>
@@ -180,7 +180,7 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
 
         {/* ── SECTION 3 — MÉDICAL ── */}
         <fieldset>
-          <legend className="mb-4 text-base font-semibold uppercase tracking-widest text-teal-700/80">Médical</legend>
+          <legend className="mb-4 text-base font-semibold uppercase tracking-widest text-blue-700/80">Médical</legend>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
               <span className={labelClass}>Groupe sanguin</span>
@@ -214,7 +214,7 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
 
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onClose} className="interactive rounded-2xl border border-slate-200 bg-white px-5 py-3 text-base font-medium text-slate-700">Annuler</button>
-          <button type="submit" disabled={loading || cabinetLoading} className="interactive inline-flex items-center gap-2 rounded-2xl bg-teal-600 px-5 py-3 text-base font-medium text-white disabled:opacity-70">
+          <button type="submit" disabled={loading || cabinetLoading} className="interactive inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-base font-medium text-white disabled:opacity-70">
             {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...</> : cabinetLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Chargement...</> : 'Enregistrer'}
           </button>
         </div>

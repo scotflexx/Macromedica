@@ -17,8 +17,8 @@ BEGIN
   INSERT INTO public.profiles (id, cabinet_id, role, nom_complet)
   VALUES (
     new.id,
-    -- If created via signup or invite, check metadata first
-    COALESCE((new.raw_user_meta_data->>'cabinet_id')::uuid, gen_random_uuid()),
+    -- Only link to a real cabinet; never invent a random UUID (FK violation)
+    NULLIF(new.raw_user_meta_data->>'cabinet_id', '')::uuid,
     COALESCE(new.raw_user_meta_data->>'role', 'medecin'),
     COALESCE(new.raw_user_meta_data->>'nom_complet', new.email)
   )

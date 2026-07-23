@@ -68,8 +68,8 @@ const FeatureCard3D: React.FC<FeatureCard3DProps> = ({ icon, title, description 
           borderWidth: '1px',
           borderStyle: 'solid',
           boxShadow: isHovered
-            ? '0 25px 50px -12px rgba(13, 148, 136, 0.25)'
-            : '0 4px 24px rgba(13, 148, 136, 0.08)',
+            ? '0 25px 50px -12px rgba(59, 130, 246, 0.25)'
+            : '0 4px 24px rgba(59, 130, 246, 0.08)',
         }}
       >
         <div
@@ -77,12 +77,12 @@ const FeatureCard3D: React.FC<FeatureCard3DProps> = ({ icon, title, description 
           style={{ transform: 'translateZ(40px)', transformStyle: 'preserve-3d' }}
         >
           <div className={`card-icon-container w-16 h-16 rounded-2xl flex items-center justify-center mb-8 border transition-all duration-300
-            ${isHovered ? 'bg-[#0d9488] text-white border-transparent shadow-lg float-icon' : 'bg-teal-50/80 text-[#0d9488] border-teal-100/50'}`}>
+            ${isHovered ? 'bg-[#3B82F6] text-white border-transparent shadow-lg float-icon' : 'bg-blue-50/80 text-[#3B82F6] border-blue-100/50'}`}>
             <span className="material-symbols-outlined text-3xl shrink-0">
               {icon}
             </span>
           </div>
-          <h3 className={`text-2xl font-headline font-bold mb-4 transition-colors duration-300 ${isHovered ? 'text-[#0d9488]' : 'text-slate-900'}`}>
+          <h3 className={`text-2xl font-headline font-bold mb-4 transition-colors duration-300 ${isHovered ? 'text-[#3B82F6]' : 'text-slate-900'}`}>
             {title}
           </h3>
           <p className={`leading-relaxed font-medium transition-colors duration-300 ${isHovered ? 'text-slate-700' : 'text-[#3d4947]'}`}>

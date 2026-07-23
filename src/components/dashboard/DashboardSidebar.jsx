@@ -12,7 +12,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Bot
+  Bot,
+  ListChecks
 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { getSidebarForRole } from '../../lib/sidebarConfig'
@@ -33,6 +34,7 @@ const iconMap = {
   stethoscope: Stethoscope,
   'users-round': UsersRound,
   'bot': Bot,
+  'list-checks': ListChecks,
 }
 
 const CustomHoverTooltip = ({ children, content }) => (
@@ -61,41 +63,43 @@ function SidebarLink({ item, onClick, isCollapsed }) {
       end={item.to.endsWith('/dashboard')}
       onClick={onClick}
       className={({ isActive }) =>
-        `group interactive relative flex items-center transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] outline-none box-border ${
-          isCollapsed ? 'justify-center w-full px-2 py-2' : 'gap-3 px-4 py-3 w-full rounded-2xl'
-        } text-[14px] font-[500] ${
+        `group interactive relative flex items-center transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] outline-none box-border ${
+          isCollapsed ? 'justify-center w-full px-2 py-2' : 'gap-2.5 px-4 py-2.5 w-full'
+        } ${
           isActive
-            ? (isCollapsed ? '' : 'bg-white text-slate-950 shadow-[0_18px_40px_-28px_rgba(13,148,136,0.7)]')
-            : (`text-slate-300 ${isCollapsed ? '' : 'hover:bg-white/10 hover:text-white'}`)
+            ? (isCollapsed ? '' : 'text-white bg-white/5')
+            : (`text-[#94A3B8] ${isCollapsed ? '' : 'hover:bg-white/5 hover:text-white'}`)
         }`
       }
     >
       {({ isActive }) => (
         <>
-          {isCollapsed && isActive && (
-            <div className="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full bg-teal-500 transition-all duration-300" />
-          )}
-
           <span
-            className={`flex items-center justify-center transition-all duration-150 ease-in-out shrink-0 ${
+            className={`flex items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] shrink-0 ${
               isCollapsed
-                ? `h-12 w-full max-w-[48px] mx-auto rounded-xl overflow-hidden ${
+                ? `h-10 w-10 mx-auto rounded-xl overflow-hidden ${
                     isActive
-                      ? 'bg-teal-500 text-white shadow-md'
-                      : 'bg-transparent text-slate-300 group-hover:bg-teal-500/10 group-hover:scale-110 group-hover:text-teal-400'
+                      ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30 scale-110'
+                      : 'bg-transparent text-[#94A3B8] group-hover:bg-white/10 group-hover:text-white'
                   }`
-                : `h-10 w-10 rounded-2xl bg-white/10 ${isActive ? 'text-slate-950' : 'text-slate-300'}`
+                : `h-8 w-8 rounded-lg ${isActive ? 'text-white' : 'text-[#94A3B8]'}`
             }`}
           >
-            <Icon className={isCollapsed ? "h-6 w-6" : "h-5 w-5"} />
+            <Icon size={18} className={isCollapsed ? "h-5 w-5" : "h-[18px] w-[18px]"} />
           </span>
 
           <span
-            className={`overflow-hidden whitespace-nowrap transition-all duration-200 ease-in-out ${
+            className={`overflow-hidden whitespace-nowrap transition-all duration-400 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
               isCollapsed
                 ? 'max-w-0 opacity-0 -translate-x-3 delay-0'
                 : 'max-w-[200px] opacity-100 translate-x-0 delay-100'
             }`}
+            style={{
+              fontSize: 'var(--type-nav)',
+              fontWeight: isActive ? 'var(--weight-nav-active)' : 'var(--weight-nav)',
+              lineHeight: 'var(--leading-nav)',
+              letterSpacing: 'var(--tracking-nav)'
+            }}
           >
             {item.label}
           </span>
@@ -128,19 +132,16 @@ function DashboardSidebar({ mobile = false, onClose }) {
 
   return (
     <aside
-      className={`relative flex h-full flex-col bg-[#0d1117] text-white overflow-x-hidden transition-[width,min-width,max-width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+      className={`relative flex h-full flex-col bg-[#0d1117] text-white overflow-x-hidden border-r border-[#1e293b] transition-[width,min-width,max-width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
         mobile ? 'w-full' : isCollapsed ? 'w-[64px] min-w-[64px] max-w-[64px] shrink-0' : 'w-[255px] min-w-[255px] max-w-[255px] shrink-0'
       }`}
     >
       <div
-        className={`relative flex flex-row items-center border-b border-white/10 h-[96px] transition-all duration-300 ease-in-out box-border ${
+        className={`relative flex flex-row items-center border-b border-white/10 h-[64px] transition-all duration-300 ease-in-out box-border ${
           isCollapsed ? 'px-1' : 'px-6'
         }`}
       >
         <div className={`flex flex-1 items-center overflow-hidden transition-all duration-300 ease-in-out ${isCollapsed ? 'justify-start' : 'gap-3'}`}>
-          <div className={`flex shrink-0 items-center justify-center rounded-2xl bg-teal-500/20 text-teal-300 transition-all duration-300 ease-in-out ${isCollapsed ? 'h-8 w-8 rounded-xl' : 'h-10 w-10'}`}>
-            {isCollapsed ? <span className="text-[20px] leading-none">✦</span> : <Stethoscope className="h-5 w-5" />}
-          </div>
           <div
             className={`overflow-hidden transition-all duration-200 ease-in-out ${
               isCollapsed
@@ -173,7 +174,7 @@ function DashboardSidebar({ mobile = false, onClose }) {
       </div>
 
       <div
-        className={`flex-1 space-y-8 overflow-y-auto overflow-x-hidden py-6 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+        className={`flex-1 space-y-8 overflow-y-auto overflow-x-hidden pt-4 pb-6 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${
           isCollapsed ? 'px-0' : 'px-4'
         }`}
       >
@@ -190,7 +191,7 @@ function DashboardSidebar({ mobile = false, onClose }) {
                 }`}
               />
               <p
-                className={`absolute left-3 whitespace-nowrap text-[10px] font-[700] uppercase tracking-[0.1em] text-[#8b949e] transition-all duration-150 ease-in-out ${
+                className={`absolute left-3 whitespace-nowrap text-[11px] font-[600] uppercase tracking-[0.06em] text-[#94a3b8] transition-all duration-150 ease-in-out ${
                   isCollapsed ? 'delay-0 w-0 overflow-hidden opacity-0' : 'delay-150 w-auto opacity-100'
                 }`}
               >
@@ -214,10 +215,11 @@ function DashboardSidebar({ mobile = false, onClose }) {
             isCollapsed ? 'pointer-events-none -translate-x-3 opacity-0 delay-0' : 'translate-x-0 opacity-100 delay-100'
           }`}
         >
-          <div className="w-[215px] rounded-[24px] bg-white/5 p-4">
-            <p className="whitespace-nowrap text-[13px] font-semibold text-white truncate">{cabinetName}</p>
-            <p className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-slate-400 capitalize">
-              Role: {profile?.role || 'Médecin'}
+          <div className="w-[215px] rounded-[24px] bg-white/5 p-5">
+            <p className="text-[11px] font-[600] uppercase tracking-[0.06em] text-[#94a3b8] mb-2">Administration</p>
+            <p className="whitespace-nowrap text-[14px] font-[500] text-white truncate">{cabinetName}</p>
+            <p className="mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-[400] leading-[1.5] text-[#94a3b8] capitalize">
+              Role: {profile?.role || 'Docteur'}
             </p>
           </div>
         </div>
@@ -228,7 +230,7 @@ function DashboardSidebar({ mobile = false, onClose }) {
           }`}
         >
           <CustomHoverTooltip content={userName}>
-            <div className="flex h-10 w-10 shrink-0 cursor-default items-center justify-center rounded-full bg-teal-600 text-[13px] font-bold text-white uppercase shadow-md transition hover:bg-teal-500">
+            <div className="flex h-10 w-10 shrink-0 cursor-default items-center justify-center rounded-full bg-blue-600 text-[13px] font-bold text-white uppercase shadow-md transition hover:bg-blue-500">
               {userInitials}
             </div>
           </CustomHoverTooltip>

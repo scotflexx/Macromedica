@@ -53,8 +53,8 @@ Date du prélèvement : 01/04/2026
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
-          <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         </div>
@@ -87,7 +87,7 @@ Date du prélèvement : 01/04/2026
         <button
           onClick={analyzeDocument}
           disabled={loading || !file}
-          className="w-full py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-40 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+          className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors font-medium text-sm flex items-center justify-center gap-2"
         >
           {loading ? (
             <>
@@ -106,13 +106,13 @@ Date du prélèvement : 01/04/2026
       {error && <p className="text-red-600 text-sm mt-4 p-3 bg-red-50 rounded-lg">{error}</p>}
 
       {summary && (
-        <div className="mt-6 bg-teal-50 rounded-lg p-5 border border-teal-100">
+        <div className="mt-6 bg-blue-50 rounded-lg p-5 border border-blue-100">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-2 h-2 rounded-full bg-teal-500"/>
-            <span className="text-sm font-bold text-teal-800">Extraction Terminée</span>
+            <div className="w-2 h-2 rounded-full bg-blue-500"/>
+            <span className="text-sm font-bold text-blue-800">Extraction Terminée</span>
           </div>
           <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap font-medium">{summary}</p>
-          <button className="mt-4 w-full py-2 bg-white border border-teal-200 text-teal-700 rounded-lg text-sm hover:bg-teal-50 transition-colors font-medium">
+          <button className="mt-4 w-full py-2 bg-white border border-blue-200 text-blue-700 rounded-lg text-sm hover:bg-blue-50 transition-colors font-medium">
             Ajouter cette synthèse au dossier patient
           </button>
         </div>

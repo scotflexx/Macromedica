@@ -1,8 +1,8 @@
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAppContext } from '../../context/AppContext'
 import { Loader2 } from 'lucide-react'
 
-function ProtectedRoute({ children }) {
+function ProtectedRoute() {
   const { isAuthenticated, isInitializing } = useAppContext()
   const location = useLocation()
 
@@ -10,7 +10,7 @@ function ProtectedRoute({ children }) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-teal-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
           <p className="text-sm text-slate-500">Chargement...</p>
         </div>
       </div>
@@ -21,7 +21,7 @@ function ProtectedRoute({ children }) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 
-  return children
+  return <Outlet />
 }
 
 export default ProtectedRoute

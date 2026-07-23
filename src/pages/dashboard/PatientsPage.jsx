@@ -7,6 +7,7 @@ import PatientFormModal from '../../components/forms/PatientFormModal'
 import { getPatients, getConsultations, getRdv } from '../../lib/api'
 import { useAppContext } from '../../context/AppContext'
 import PatientProfileView from './PatientProfileView'
+import { MOCK_PATIENTS, MOCK_CONSULTATIONS, MOCK_RDV } from '../../lib/mockData'
 
 const formatDateShort = (dateStr) => {
   if (!dateStr) return '-'
@@ -42,23 +43,29 @@ function PatientsPage() {
   const [currentPage, setCurrentPage] = useState(1)
 
   // ── Data Queries ──
-  const { data: patients, isLoading: isLoadingPatients, refetch } = useQuery({
+  const { data: patientsRaw, isLoading: isLoadingPatients, refetch } = useQuery({
     queryKey: ['patients', profile?.cabinet_id],
     queryFn: getPatients,
     enabled: !!profile?.cabinet_id && !id // Don't fetch the list if we're in profile view
   })
 
-  const { data: consultations, isLoading: isLoadingConsultations } = useQuery({
+  const { data: consultationsRaw, isLoading: isLoadingConsultations } = useQuery({
     queryKey: ['consultations', profile?.cabinet_id],
     queryFn: getConsultations,
     enabled: !!profile?.cabinet_id && !id
   })
 
-  const { data: rdvs } = useQuery({
+  const { data: rdvsRaw, isLoading: isLoadingRdvs } = useQuery({
     queryKey: ['rdv', profile?.cabinet_id],
     queryFn: getRdv,
     enabled: !!profile?.cabinet_id && !id
   })
+
+  // Use mock data as fallback when Supabase returns nothing
+  const patients = (patientsRaw && patientsRaw.length > 0) ? patientsRaw : MOCK_PATIENTS
+  const consultations = (consultationsRaw && consultationsRaw.length > 0) ? consultationsRaw : MOCK_CONSULTATIONS
+  const rdvs = (rdvsRaw && rdvsRaw.length > 0) ? rdvsRaw : MOCK_RDV
+
 
   // ── Build lookup maps for real data ──
   const patientDataMap = useMemo(() => {
@@ -202,8 +209,8 @@ function PatientsPage() {
     return <PatientProfileView patientId={id} onBack={() => navigate('/patients')} />
   }
 
-  if (isLoadingPatients || isLoadingConsultations) {
-    return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-teal-600" /></div>
+  if (isLoadingPatients || isLoadingConsultations || isLoadingRdvs) {
+    return <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 animate-spin text-blue-600" /></div>
   }
 
   return (
@@ -211,9 +218,9 @@ function PatientsPage() {
       {/* ── Header ── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-[32px] font-bold text-teal-700 tracking-tight">Patients</h1>
+          <h1 className="text-[32px] font-bold text-slate-900 tracking-tight">Patients</h1>
           <p className="text-[14px] text-slate-500 mt-1">
-            Gestion du registre de la clinique · <span className="font-semibold text-teal-600">{totalPatients.toLocaleString('fr-FR')} dossiers</span>
+            Gestion du registre de la clinique · <span className="font-semibold text-blue-600">{totalPatients.toLocaleString('fr-FR')} dossiers</span>
           </p>
         </div>
         <AppButton onClick={() => setShowCreate(true)} className="gap-2">
@@ -225,8 +232,8 @@ function PatientsPage() {
       {/* ── 3 Stat Cards ── */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-[24px] bg-white p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center gap-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)]">
-          <div className="p-3 rounded-2xl bg-teal-50">
-            <Users className="w-6 h-6 text-teal-600" />
+          <div className="p-3 rounded-2xl bg-blue-50">
+            <Users className="w-6 h-6 text-blue-600" />
           </div>
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Total Patients</p>
@@ -280,7 +287,7 @@ function PatientsPage() {
             onClick={() => { setActiveTab(tab.key); setCurrentPage(1) }}
             className={`px-4 py-2 rounded-full text-[13px] font-semibold transition-all duration-200 flex items-center gap-2 ${
               activeTab === tab.key
-                ? 'bg-teal-600 text-white shadow-sm'
+                ? 'bg-blue-600 text-white shadow-sm'
                 : 'bg-white text-slate-500 hover:bg-slate-50 ring-1 ring-slate-100'
             }`}
           >
@@ -322,7 +329,7 @@ function PatientsPage() {
 
           // Determine status
           let statusLabel = 'Actif'
-          let statusClasses = 'bg-teal-50 text-teal-700 ring-1 ring-teal-100/50'
+          let statusClasses = 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100/50'
           if (info.isArchived) {
             statusLabel = 'Archivé'
             statusClasses = 'bg-slate-100 text-slate-500 ring-1 ring-slate-200/50'
@@ -345,7 +352,7 @@ function PatientsPage() {
               className="w-full grid grid-cols-[auto_1fr_110px_140px_140px_100px_80px] gap-4 px-6 py-4 border-b border-slate-50 items-center text-left hover:bg-slate-50/50 transition-colors group"
             >
               {/* Avatar */}
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-[13px] font-bold text-slate-600 group-hover:bg-teal-50 group-hover:text-teal-700 transition-colors">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-[13px] font-bold text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
                 {initials || 'P'}
               </div>
 
@@ -371,7 +378,7 @@ function PatientsPage() {
                   {nextRdvDisplay}
                 </span>
                 {nextRdvSub && (
-                  <span className="text-[12px] text-teal-600 ml-1">{nextRdvSub}</span>
+                  <span className="text-[12px] text-blue-600 ml-1">{nextRdvSub}</span>
                 )}
               </div>
 
@@ -386,7 +393,7 @@ function PatientsPage() {
               {/* Actions */}
       <div className="flex items-center gap-1.5">
                 <div
-                  className="p-2 rounded-xl bg-slate-50 text-slate-400 hover:bg-teal-50 hover:text-teal-600 transition-colors"
+                  className="p-2 rounded-xl bg-slate-50 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
                   title="Prendre RDV"
                   onClick={(e) => { e.stopPropagation(); navigate('/agenda') }}
                 >
@@ -434,7 +441,7 @@ function PatientsPage() {
                   onClick={() => setCurrentPage(page)}
                   className={`w-8 h-8 rounded-xl text-[13px] font-semibold transition-all ${
                     safePage === page
-                      ? 'bg-teal-600 text-white shadow-sm'
+                      ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-slate-500 hover:bg-slate-50'
                   }`}
                 >
@@ -448,7 +455,7 @@ function PatientsPage() {
                 <button
                   onClick={() => setCurrentPage(totalPages)}
                   className={`w-8 h-8 rounded-xl text-[13px] font-semibold transition-all ${
-                    safePage === totalPages ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
+                    safePage === totalPages ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
                   }`}
                 >
                   {totalPages}

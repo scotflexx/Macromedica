@@ -17,14 +17,14 @@ import { PinProvider } from '../context/PinContext'
 // Map the last path segment to a title, works for any role prefix
 const PAGE_TITLES = {
   dashboard: 'Tableau de bord',
-  agenda: 'Agenda',
-  'salle-attente': "Salle d'attente",
+  agenda: 'Agenda (RDV)',
   patients: 'Patients',
   consultation: 'Consultation',
   ordonnances: 'Ordonnances',
   facturation: 'Facturation',
+  'ai-scribe': 'Assistant IA',
+  taches: 'Tâches',
   parametres: 'Paramètres',
-  equipe: 'Gestion Équipe',
 }
 
 function getPageTitle(pathname) {
@@ -72,10 +72,12 @@ function DashboardLayout() {
   const cacheLoadedRef = useRef(false)
 
   const title = useMemo(() => getPageTitle(location.pathname), [location.pathname])
+  const isDashboardRoute = location.pathname === '/dashboard'
 
   // Routes that need full-bleed layout (no padding wrapper, no scroll — component owns its own height)
-  const FULL_BLEED_ROUTES = ['/secretaire']
-  const isFullBleed = FULL_BLEED_ROUTES.includes(location.pathname)
+  const FULL_BLEED_ROUTES = ['/secretaire', '/dashboard', '/dossier-patient']
+  const isFullBleed = FULL_BLEED_ROUTES.includes(location.pathname) || (location.pathname === '/dashboard' && role === 'medecin')
+  const isDossierRoute = location.pathname === '/dossier-patient'
 
   const breadcrumbs = useMemo(() => {
     const segments = location.pathname.split('/').filter(Boolean)
@@ -192,7 +194,7 @@ function DashboardLayout() {
         const STATUS_MAP = {
           'confirme': { label: 'Confirmé', class: 'bg-amber-50 text-amber-700' },
           'arrive': { label: 'Arrivé', class: 'bg-blue-50 text-blue-700' },
-          'en_consultation': { label: 'En consultation', class: 'bg-teal-50 text-teal-700' },
+          'en_consultation': { label: 'En consultation', class: 'bg-blue-50 text-blue-700' },
           'termine': { label: 'Terminé', class: 'bg-emerald-50 text-emerald-700' },
           'absent': { label: 'Absent', class: 'bg-rose-50 text-rose-700' },
           'annule': { label: 'Annulé', class: 'bg-rose-50 text-rose-700' }
@@ -226,7 +228,7 @@ function DashboardLayout() {
     <PinProvider>
     <SidebarProvider defaultOpen={localStorage.getItem('sidebar-collapsed') !== 'true'}>
       <TooltipProvider>
-        <div className="flex h-screen w-full overflow-hidden bg-[#f0f9f9]">
+        <div className="flex h-screen w-full overflow-hidden bg-gray-50">
           <div className="hidden lg:block shrink-0">
             <DashboardSidebar />
           </div>
@@ -248,15 +250,13 @@ function DashboardLayout() {
               searchLoading={searchLoading}
             />
 
-            <main className={`flex-1 overflow-x-hidden relative ${isFullBleed ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+            <main className={`relative flex-1 overflow-x-hidden ${isFullBleed ? (isDashboardRoute || isDossierRoute ? 'overflow-y-auto' : 'overflow-hidden flex flex-col') : 'overflow-y-auto'}`}>
               {isFullBleed
                 ? <Outlet />
-                : <div className="w-full max-w-[1400px] mx-auto px-5 md:px-[32px] py-[24px]"><Outlet /></div>
+                : <div className="w-full max-w-[1400px] mx-auto px-5 md:px-[32px] pt-[12px] pb-[24px]"><Outlet /></div>
               }
             </main>
           </SidebarInset>
-
-          <FloatingActionButton />
 
           <PatientFormModal open={globalModal?.type === 'patient'} onClose={closeGlobalModal} />
           <AppointmentFormModal open={globalModal?.type === 'appointment'} onClose={closeGlobalModal} />
