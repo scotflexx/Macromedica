@@ -559,7 +559,7 @@ export default function PatientWorkspace() {
                               <p className="text-sm font-semibold text-slate-800">{med.name}</p>
                               <p className="text-xs text-slate-500">{med.dosage}</p>
                             </div>
-                            <div className="w-2 h-2 rounded-full bg-emerald-500 />
+                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
                           </div>
                         ))}
                       </div>
