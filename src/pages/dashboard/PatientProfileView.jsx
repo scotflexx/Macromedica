@@ -5,7 +5,7 @@ import {
   FileText,
   Microscope,
   Pill,
-  AlertCircle,
+  AlertTriangle,
   MoreHorizontal,
   Printer,
   Share2,
@@ -13,7 +13,12 @@ import {
   Info,
   X,
   FilePlus,
-  CheckCircle
+  CheckCircle2,
+  User,
+  Heart,
+  Activity,
+  Clock,
+  Save,
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -114,7 +119,7 @@ function TimelineEvent({ event, index, onViewDetails }) {
         return {
           color: '#EF4444',
           label: 'Urgence',
-          icon: <AlertCircle size={16} />
+          icon: <AlertTriangle size={16} />
         }
       case 'lab':
         return {
@@ -182,14 +187,14 @@ function TimelineEvent({ event, index, onViewDetails }) {
       <motion.div
         whileHover={{ x: 4, boxShadow: '0 12px 40px rgba(0,0,0,0.08)' }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="rounded-2xl border border-slate-200 bg-white p-5"
+        className="rounded-[21px] border border-[#e2e8f0] bg-white p-5 shadow-[0_5px_16px_rgba(15,23,42,0.045)]"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-400 uppercase tracking-[0.1em]">
               {event.date} · {event.doctor}
             </p>
-            <h3 className="text-base font-semibold text-slate-800 mt-1">
+            <h3 className="text-base font-semibold text-slate-900 mt-1">
               {event.title}
             </h3>
           </div>
@@ -239,16 +244,16 @@ function QuickAction({ icon, title, description, isPrimary, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-white transition-all hover:border-blue-200 hover:shadow-md group ${isPrimary ? 'bg-blue-50/50 border-blue-100' : ''}`}
+      className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#e2e8f0] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.05)] transition-all hover:border-blue-200 hover:shadow-[0_5px_16px_rgba(15,23,42,0.045)] group"
     >
-      <div className={`w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center group-hover:bg-blue-100 transition-all ${isPrimary ? 'bg-blue-100' : ''}`}>
-        <div className={`text-slate-500 group-hover:text-blue-600 transition-colors ${isPrimary ? 'text-blue-600' : ''}`}>
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center group-hover:bg-blue-100 transition-all ${isPrimary ? 'bg-blue-100' : 'bg-slate-100'}`}>
+        <div className={`text-slate-500 group-hover:text-blue-600 transition-all ${isPrimary ? 'text-blue-600' : ''}`}>
           {icon}
         </div>
       </div>
       <div className="text-left">
         <p className="text-sm font-semibold text-slate-800">{title}</p>
-        <p className="text-[11px] text-slate-500">{description}</p>
+        <p className="text-xs text-slate-500">{description}</p>
       </div>
     </button>
   )
@@ -262,7 +267,7 @@ function EventDetailsModal({ event, onClose }) {
         return {
           color: '#EF4444',
           label: 'Urgence',
-          icon: <AlertCircle size={20} />
+          icon: <AlertTriangle size={20} />
         }
       case 'lab':
         return {
@@ -310,13 +315,13 @@ function EventDetailsModal({ event, onClose }) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-2xl bg-white rounded-[21px] shadow-[0_12px_48px_rgba(0,0,0,0.12)] overflow-hidden"
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+        <div className="flex items-center justify-between p-6 border-b border-[#e2e8f0]">
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              className="w-10 h-10 rounded-full flex items-center justify-center"
               style={{ backgroundColor: `${config.color}10` }}
             >
               <div style={{ color: config.color }}>
@@ -334,7 +339,7 @@ function EventDetailsModal({ event, onClose }) {
           </div>
           <button
             onClick={onClose}
-            className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
+            className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
           >
             <X className="w-4 h-4 text-slate-600" />
           </button>
@@ -365,22 +370,22 @@ function EventDetailsModal({ event, onClose }) {
           <h3 className="text-sm font-semibold text-slate-900 mb-3">
             Détails
           </h3>
-          <pre className="whitespace-pre-wrap text-sm text-slate-600 bg-slate-50 p-4 rounded-xl font-sans leading-relaxed">
+          <pre className="whitespace-pre-wrap text-sm text-slate-600 bg-slate-50 p-4 rounded-xl font-sans leading-relaxed border border-[#e2e8f0]">
             {event.details}
           </pre>
         </div>
 
         {/* Modal Footer */}
-        <div className="flex justify-end gap-3 p-6 border-t border-slate-100 bg-slate-50">
+        <div className="flex justify-end gap-3 p-6 border-t border-[#e2e8f0] bg-[#f8fafc]">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-700 bg-white border border-slate-300 rounded-xl font-medium hover:bg-slate-50 hover:border-slate-400 transition-all"
+            className="px-4 py-2 text-sm text-slate-700 bg-white border border-[#e2e8f0] rounded-xl font-medium hover:bg-slate-50 hover:border-slate-400 transition-all"
           >
             Fermer
           </button>
           <button
             onClick={() => window.print()}
-            className="px-4 py-2 text-sm text-white bg-blue-600 border border-blue-600 rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all"
+            className="px-4 py-2 text-sm text-white bg-[#2563eb] border border-[#2563eb] rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all shadow-[0_4px_12px_rgba(37,99,235,0.25)]"
           >
             Imprimer
           </button>
@@ -409,13 +414,13 @@ function SimpleModal({ title, description, icon, color, onClose, onSave, childre
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-xl bg-white rounded-[21px] shadow-[0_12px_48px_rgba(0,0,0,0.12)] overflow-hidden"
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+        <div className="flex items-center justify-between p-6 border-b border-[#e2e8f0]">
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              className="w-10 h-10 rounded-full flex items-center justify-center"
               style={{ backgroundColor: `${color}10` }}
             >
               <div style={{ color }}>
@@ -433,7 +438,7 @@ function SimpleModal({ title, description, icon, color, onClose, onSave, childre
           </div>
           <button
             onClick={onClose}
-            className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
+            className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
           >
             <X className="w-4 h-4 text-slate-600" />
           </button>
@@ -445,16 +450,16 @@ function SimpleModal({ title, description, icon, color, onClose, onSave, childre
         </div>
 
         {/* Modal Footer */}
-        <div className="flex justify-end gap-3 p-6 border-t border-slate-100 bg-slate-50">
+        <div className="flex justify-end gap-3 p-6 border-t border-[#e2e8f0] bg-[#f8fafc]">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-700 bg-white border border-slate-300 rounded-xl font-medium hover:bg-slate-50 hover:border-slate-400 transition-all"
+            className="px-4 py-2 text-sm text-slate-700 bg-white border border-[#e2e8f0] rounded-xl font-medium hover:bg-slate-50 hover:border-slate-400 transition-all"
           >
             Annuler
           </button>
           <button
             onClick={onSave}
-            className="px-4 py-2 text-sm text-white bg-blue-600 border border-blue-600 rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all"
+            className="px-4 py-2 text-sm text-white bg-[#2563eb] border border-[#2563eb] rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all shadow-[0_4px_12px_rgba(37,99,235,0.25)]"
           >
             Enregistrer
           </button>
@@ -483,16 +488,16 @@ function SuccessModal({ message, onClose }) {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden p-6 text-center"
+        className="relative w-full max-w-sm bg-white rounded-[21px] shadow-[0_12px_48px_rgba(0,0,0,0.12)] overflow-hidden p-6 text-center"
       >
-        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-          <CheckCircle className="w-8 h-8 text-green-600" />
+        <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
+          <CheckCircle2 className="w-8 h-8 text-emerald-600" />
         </div>
         <h2 className="text-lg font-semibold text-slate-900 mb-2">Succès !</h2>
         <p className="text-sm text-slate-600 mb-6">{message}</p>
         <button
           onClick={onClose}
-          className="w-full px-4 py-2 text-sm text-white bg-blue-600 border border-blue-600 rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all"
+          className="w-full px-4 py-2 text-sm text-white bg-[#2563eb] border border-[#2563eb] rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all shadow-[0_4px_12px_rgba(37,99,235,0.25)]"
         >
           Continuer
         </button>
@@ -600,7 +605,7 @@ export default function PatientProfileView({ patientId, onBack }) {
 
   if (loadingPatient || !patient) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex items-center justify-center min-h-screen bg-[#f8fafc]">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
           <p className="text-slate-500 font-medium">Chargement du dossier...</p>
@@ -614,119 +619,50 @@ export default function PatientProfileView({ patientId, onBack }) {
   const nextRdv = 'À planifier'
 
   return (
-    <section aria-label="Dossier patient" className="min-h-screen bg-slate-50 flex flex-col pb-6">
+    <section aria-label="Dossier patient" className="min-h-screen bg-[#f8fafc] flex flex-col pb-6">
       {/* --- Header --- */}
       <motion.header
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="sticky top-0 z-50 bg-slate-50 px-6 pt-4 pb-3"
+        className="sticky top-0 z-50 bg-[#f8fafc] px-6 pt-4 pb-3"
       >
-        <div className="max-w-[1600px] mx-auto flex items-center justify-between bg-white border border-slate-200 px-5 py-3 rounded-[24px] shadow-[0_6px_18px_rgba(15,23,42,0.04)]">
+        <div className="max-w-[1800px] mx-auto flex items-center justify-between bg-white border border-[#e2e8f0] px-6 py-5 rounded-[21px] shadow-[0_5px_16px_rgba(15,23,42,0.045)]">
           <div className="flex items-center gap-4">
             <button
               onClick={onBack}
               aria-label="Retour à la liste des patients"
-              className="w-10 h-10 rounded-[16px] bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
+              className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
             >
               <ArrowLeft className="w-5 h-5 text-slate-600" />
             </button>
-            <div>
-              <h1
-                style={{
-                  fontSize: '22px',
-                  fontWeight: 600,
-                  lineHeight: '30px',
-                  color: '#0f172a',
-                  display: 'flex',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '10px',
-                  letterSpacing: '-0.01em',
-                }}
-              >
-                Dossier Patient
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '13px',
-                    fontWeight: 400,
-                    color: '#64748b',
-                    letterSpacing: 0,
-                  }}
-                >
-                  <span style={{ color: '#cbd5e1', marginRight: '2px' }}>—</span>
-                  <span>{patient.prenom} {patient.nom}</span>
-                  <span style={{ color: '#cbd5e1' }}>•</span>
-                  <span>{age} ans</span>
-                  {/* ID copy chip */}
-                  <button
-                    title="Copier l'ID patient"
-                    onClick={() => {
-                      navigator.clipboard.writeText(patient.id).catch(() => {})
-                      setIdCopied(true)
-                      setTimeout(() => setIdCopied(false), 1500)
-                    }}
-                    style={{
-                      width: '22px',
-                      height: '22px',
-                      borderRadius: '6px',
-                      border: `1px solid ${idCopied ? '#dbeafe' : '#e2e8f0'}`,
-                      background: idCopied ? '#eff6ff' : '#f8fafc',
-                      color: idCopied ? '#2563eb' : '#94a3b8',
-                      fontSize: '9px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: 0,
-                      marginLeft: '2px',
-                      transition: 'all 0.12s ease',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {idCopied ? '✓' : 'ID'}
-                  </button>
-                  {/* micro-toast */}
-                  <AnimatePresence>
-                    {idCopied && (
-                      <motion.span
-                        initial={{ opacity: 0, y: 4, scale: 0.9 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -4, scale: 0.9 }}
-                        transition={{ duration: 0.15 }}
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          color: '#2563eb',
-                          background: '#eff6ff',
-                          border: '1px solid #dbeafe',
-                          borderRadius: '6px',
-                          padding: '1px 6px',
-                          pointerEvents: 'none',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        ID copié
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </span>
-              </h1>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-r from-[#2563eb] to-[#14b8a6] flex items-center justify-center text-white font-bold text-lg">
+                {patient.prenom?.[0] || 'P'}{patient.nom?.[0] || ''}
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">
+                  {patient.prenom} {patient.nom}
+                </h1>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-sm font-medium text-slate-600">
+                    {age} ans • {patient.sexe === 'homme' ? 'Masculin' : patient.sexe === 'femme' ? 'Féminin' : 'Non renseigné'} • {patient.mutuelle || 'Non renseigné'}
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-sm text-slate-500">Patient ID: {patient.id?.split('-')[0] || patient.id}</span>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700" role="status">
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100" role="status">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               En cours
             </span>
             <button
               aria-label="Terminer la consultation"
-              className="h-10 px-5 bg-white text-slate-700 border border-slate-300 rounded-[16px] font-medium hover:bg-slate-50 hover:border-slate-400 transition-all"
+              className="h-10 px-5 bg-white text-slate-700 border border-[#e2e8f0] rounded-[12px] font-medium hover:bg-slate-50 hover:border-slate-400 transition-all shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
               onClick={() => navigate('/dashboard')}
             >
               Terminer
@@ -736,56 +672,64 @@ export default function PatientProfileView({ patientId, onBack }) {
       </motion.header>
 
       {/* --- Main Layout --- */}
-      <main className="flex-1 max-w-[1600px] mx-auto px-6 py-6 w-full">
+      <main className="flex-1 max-w-[1800px] mx-auto px-6 py-6 w-full">
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-[300px_1fr] gap-6">
           {/* Left Column: Résumé, Actions, Alertes */}
-          <div className="space-y-5">
-            {/* Résumé Card */}
+          <div className="space-y-6">
+            {/* Patient Snapshot */}
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 }}
-              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200"
+              className="bg-white rounded-[21px] p-6 shadow-[0_5px_16px_rgba(15,23,42,0.045)] border border-[#e2e8f0]"
             >
               <p className="text-[10px] text-slate-400 uppercase tracking-[0.1em] mb-4">
-                RÉSUMÉ
+                PATIENT SNAPSHOT
               </p>
               <div className="space-y-4">
                 <div>
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
                     Dernière visite
                   </p>
-                  <p className="text-sm font-medium text-slate-800">{lastVisit}</p>
+                  <p className="text-sm font-semibold text-slate-800">{lastVisit}</p>
                   <p className="text-xs text-slate-500 mt-0.5">Dr. Benali</p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
                     Prochain RDV
                   </p>
-                  <p className="text-sm font-medium text-slate-800">{nextRdv}</p>
+                  <p className="text-sm font-semibold text-slate-800">{nextRdv}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
                     Alertes
                   </p>
-                  <p className="text-sm font-medium text-rose-600">1 active</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Allergie PCN</p>
+                  <div className="space-y-2 mt-2">
+                    <div className="flex items-center gap-2 p-3 rounded-xl border bg-amber-50 border-amber-200">
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span className="text-xs font-medium text-amber-900">Allergie PCN</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-3 rounded-xl border bg-amber-50 border-amber-200">
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span className="text-xs font-medium text-amber-900">Diabète type 2</span>
+                    </div>
+                  </div>
                 </div>
               </div>
               <button
-                className="w-full mt-5 py-2 text-xs text-blue-600 font-medium hover:text-blue-700 transition-all flex items-center justify-center gap-1"
+                className="w-full mt-6 py-2 text-xs text-blue-600 font-semibold hover:text-blue-700 transition-all flex items-center justify-center gap-1"
                 onClick={() => setActiveTab('Informations')}
               >
                 Modifier informations →
               </button>
             </motion.div>
 
-            {/* Actions Rapides Card */}
+            {/* Quick Actions */}
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.2 }}
-              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200"
+              className="bg-white rounded-[21px] p-6 shadow-[0_5px_16px_rgba(15,23,42,0.045)] border border-[#e2e8f0]"
             >
               <p className="text-[10px] text-slate-400 uppercase tracking-[0.1em] mb-4">
                 ACTIONS RAPIDES
@@ -825,31 +769,37 @@ export default function PatientProfileView({ patientId, onBack }) {
               </div>
             </motion.div>
 
-            {/* Alertes Médicales Card */}
+            {/* Recent Results */}
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.3 }}
-              className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200"
+              className="bg-white rounded-[21px] p-6 shadow-[0_5px_16px_rgba(15,23,42,0.045)] border border-[#e2e8f0]"
             >
               <p className="text-[10px] text-slate-400 uppercase tracking-[0.1em] mb-4">
-                ALERTES MÉDICALES
+                RÉSULTATS RÉCENTS
               </p>
               <div className="space-y-3">
-                <div className="flex items-start gap-2.5">
-                  <div className="w-2 h-2 rounded-full bg-rose-500 mt-1.5" />
-                  <p className="text-xs text-slate-700">Allergie pénicilline</p>
+                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-[#e2e8f0]">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800">Glycémie</p>
+                    <p className="text-[10px] text-slate-500">14 juin 2026</p>
+                  </div>
+                  <span className="text-sm font-semibold text-emerald-700">1,2 g/L</span>
                 </div>
-                <div className="flex items-start gap-2.5">
-                  <div className="w-2 h-2 rounded-full bg-amber-500 mt-1.5" />
-                  <p className="text-xs text-slate-700">Diabète type 2</p>
+                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-[#e2e8f0]">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800">Tension</p>
+                    <p className="text-[10px] text-slate-500">14 juin 2026</p>
+                  </div>
+                  <span className="text-sm font-semibold text-emerald-700">120/80</span>
                 </div>
               </div>
             </motion.div>
           </div>
 
           {/* Right Column: Main Content */}
-          <div className="space-y-5 md:col-span-2 lg:col-span-1">
+          <div className="space-y-6 md:col-span-2 lg:col-span-1">
             {/* Tabs */}
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -863,7 +813,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                     role="tab"
                     aria-selected={activeTab === tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-5 py-2 text-sm font-medium rounded-lg transition-all ${
+                    className={`px-5 py-2.5 text-sm font-semibold rounded-[10px] transition-all ${
                       activeTab === tab
                         ? 'bg-white text-slate-900 shadow-sm'
                         : 'text-slate-500 hover:text-slate-700'
@@ -888,7 +838,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                   <div className="space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div>
-                        <h2 className="text-base font-semibold text-slate-900">
+                        <h2 className="text-lg font-semibold text-slate-900">
                           Parcours de soins
                         </h2>
                       </div>
@@ -897,10 +847,10 @@ export default function PatientProfileView({ patientId, onBack }) {
                           <button
                             key={filter}
                             onClick={() => setActiveFilter(filter)}
-                            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-all ${
                               activeFilter === filter
                                 ? 'bg-slate-900 text-white'
-                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                : 'bg-white text-slate-600 border border-[#e2e8f0] hover:bg-slate-50'
                             }`}
                           >
                             {filter}
@@ -909,7 +859,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                         <div className="relative ml-auto">
                           <button
                             onClick={() => setShowMoreOptions(!showMoreOptions)}
-                            className="w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-all"
+                            className="w-9 h-9 rounded-full bg-white border border-[#e2e8f0] flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-all shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
                           >
                             <MoreHorizontal className="w-4 h-4" />
                           </button>
@@ -919,13 +869,13 @@ export default function PatientProfileView({ patientId, onBack }) {
                                 initial={{ opacity: 0, y: 8 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: 8 }}
-                                className="absolute right-0 top-full mt-2 w-40 bg-white rounded-xl shadow-lg border border-slate-100 z-50"
+                                className="absolute right-0 top-full mt-2 w-40 bg-white rounded-[16px] shadow-[0_5px_16px_rgba(15,23,42,0.045)] border border-[#e2e8f0] z-50"
                               >
-                                <button className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                                <button className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 rounded-t-[16px]">
                                   <Printer className="w-4 h-4" />
                                   Imprimer
                                 </button>
-                                <button className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-t border-slate-100">
+                                <button className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-t border-[#e2e8f0] rounded-b-[16px]">
                                   <Share2 className="w-4 h-4" />
                                   Partager
                                 </button>
@@ -951,59 +901,61 @@ export default function PatientProfileView({ patientId, onBack }) {
                 )}
 
                 {activeTab === 'Informations' && (
-                  <div className="space-y-4">
-                    <h3 className="text-base font-semibold text-slate-900">
-                      Détails du Patient
-                    </h3>
+                  <div className="space-y-6">
+                    <div className="bg-white rounded-[21px] border border-[#e2e8f0] p-6 shadow-[0_5px_16px_rgba(15,23,42,0.045)]">
+                      <div className="flex items-center gap-2 mb-6">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50">
+                          <User className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <h3 className="text-base font-semibold text-slate-900">
+                          Détails du Patient
+                        </h3>
+                      </div>
 
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                      <h4 className="font-medium text-slate-900 mb-5">
-                        Identité & Contact
-                      </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
-                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-[0.1em] mb-1.5">
                             Nom Complet
                           </p>
-                          <p className="text-sm text-slate-800">
+                          <p className="text-sm text-slate-800 font-medium">
                             {patient.nom} {patient.prenom}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-[0.1em] mb-1.5">
                             Téléphone
                           </p>
-                          <p className="text-sm text-slate-800">
+                          <p className="text-sm text-slate-800 font-medium">
                             {patient.telephone || 'Non renseigné'}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-[0.1em] mb-1.5">
                             Mutuelle
                           </p>
-                          <p className="text-sm text-blue-700">
+                          <p className="text-sm text-blue-700 font-medium">
                             {patient.mutuelle || 'Non renseigné'}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-[0.1em] mb-1.5">
                             CIN
                           </p>
-                          <p className="text-sm text-slate-800">
+                          <p className="text-sm text-slate-800 font-medium">
                             {patient.cin || 'Non renseigné'}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-[0.1em] mb-1.5">
                             Âge
                           </p>
-                          <p className="text-sm text-slate-800">{age} ans</p>
+                          <p className="text-sm text-slate-800 font-medium">{age} ans</p>
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-slate-400 uppercase tracking-[0.1em] mb-1.5">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-[0.1em] mb-1.5">
                             Sexe
                           </p>
-                          <p className="text-sm text-slate-800">
+                          <p className="text-sm text-slate-800 font-medium">
                             {patient.sexe === 'homme'
                               ? 'Masculin'
                               : patient.sexe === 'femme'
@@ -1017,7 +969,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                 )}
 
                 {activeTab === 'Documents' && (
-                  <div className="text-center py-16">
+                  <div className="text-center py-16 bg-white rounded-[21px] border border-[#e2e8f0] shadow-[0_5px_16px_rgba(15,23,42,0.045)]">
                     <div className="text-slate-400 text-sm">
                       Contenu des documents
                     </div>
@@ -1057,7 +1009,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                 <textarea
                   value={prescriptionForm.medications}
                   onChange={(e) => setPrescriptionForm({ ...prescriptionForm, medications: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#e2e8f0] bg-slate-50 rounded-xl resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                   rows={4}
                   placeholder="Ex: Metformine 500mg 2x/jour"
                 />
@@ -1069,7 +1021,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                 <textarea
                   value={prescriptionForm.notes}
                   onChange={(e) => setPrescriptionForm({ ...prescriptionForm, notes: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#e2e8f0] bg-slate-50 rounded-xl resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                   rows={2}
                   placeholder="Instructions supplémentaires..."
                 />
@@ -1096,7 +1048,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                 <select
                   value={labForm.type}
                   onChange={(e) => setLabForm({ ...labForm, type: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#e2e8f0] bg-slate-50 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                 >
                   <option value="">Sélectionner...</option>
                   <option value="blood">Sanguin</option>
@@ -1112,7 +1064,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                 <textarea
                   value={labForm.notes}
                   onChange={(e) => setLabForm({ ...labForm, notes: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#e2e8f0] bg-slate-50 rounded-xl resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                   rows={4}
                   placeholder="Détails sur les analyses à effectuer..."
                 />
@@ -1139,7 +1091,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                 <input
                   value={reportForm.title}
                   onChange={(e) => setReportForm({ ...reportForm, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#e2e8f0] bg-slate-50 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                   placeholder="Ex: Consultation du 19/06/2026"
                 />
               </div>
@@ -1150,7 +1102,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                 <textarea
                   value={reportForm.content}
                   onChange={(e) => setReportForm({ ...reportForm, content: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#e2e8f0] bg-slate-50 rounded-xl resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                   rows={6}
                   placeholder="Rédigez votre compte-rendu ici..."
                 />
@@ -1177,7 +1129,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                 <input
                   value={documentForm.name}
                   onChange={(e) => setDocumentForm({ ...documentForm, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#e2e8f0] bg-slate-50 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                   placeholder="Ex: Résultats d'analyses"
                 />
               </div>
@@ -1188,7 +1140,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                 <select
                   value={documentForm.type}
                   onChange={(e) => setDocumentForm({ ...documentForm, type: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#e2e8f0] bg-slate-50 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                 >
                   <option value="">Sélectionner...</option>
                   <option value="lab">Analyses</option>
@@ -1197,7 +1149,7 @@ export default function PatientProfileView({ patientId, onBack }) {
                   <option value="other">Autre</option>
                 </select>
               </div>
-              <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center">
+              <div className="border-2 border-dashed border-[#e2e8f0] rounded-[16px] p-8 text-center bg-slate-50">
                 <FileText className="w-10 h-10 text-slate-400 mx-auto mb-2" />
                 <p className="text-sm text-slate-500">
                   Glissez-déposez un fichier ou cliquez pour parcourir

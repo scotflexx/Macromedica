@@ -540,7 +540,7 @@ const LandingPage = () => {
                     <div className="relative levitate">
                         <div className="absolute -inset-20 bg-blue-200/20 blur-[120px] rounded-full"></div>
                         
-                        {/* Coded Dashboard Mockup */}
+                        {/* Updated Dashboard Mockup */}
                         <div className="mockup-wrapper relative z-10 text-left">
                           <div className="browser-bar">
                             <div className="dots">
@@ -549,189 +549,139 @@ const LandingPage = () => {
                               <span className="dot green"></span>
                             </div>
                             <div className="url-bar">
-                              🔒 macromedica.app/dashboard
+                              🔒 macromedica.app
                             </div>
                           </div>
                         
-                          <div className="dashboard-body">
-                            <div className="mini-sidebar">
-                              <div className="sidebar-logo">
-                                <span className="logo-icon">✦</span>
-                                <span className="logo-text">MacroMedica</span>
+                          <div className="dashboard-body flex" style={{ height: '520px' }}>
+                            {/* Mini Sidebar */}
+                            <div className="mini-sidebar flex flex-col" style={{ width: '240px', background: '#0d1117', padding: '16px', flexShrink: 0 }}>
+                              <div className="sidebar-logo flex items-center gap-2 px-3 py-2">
+                                <span style={{ color: '#14b8a6', fontSize: '24px' }}>✦</span>
+                                <span style={{ color: 'white', fontSize: '18px', fontWeight: 700 }}>MacroMedica</span>
                               </div>
                               
-                              <div className="sidebar-section-title">PILOTAGE</div>
-                              <div className="sidebar-items">
-                                <div className="sidebar-item active">
-                                  <div className="sidebar-icon-placeholder"></div> Tableau de bord
-                                </div>
-                                <div className="sidebar-item">
-                                  <div className="sidebar-icon-placeholder"></div> Agenda
-                                </div>
-                                <div className="sidebar-item">
-                                  <div className="sidebar-icon-placeholder"></div> Salle d'attente
-                                </div>
-                              </div>
-                            
-                              <div className="sidebar-section-title">CŒUR DE MÉTIER</div>
-                              <div className="sidebar-items">
-                                <div className="sidebar-item">
-                                  <div className="sidebar-icon-placeholder"></div> Dossiers Patients
-                                </div>
-                                <div className="sidebar-item">
-                                  <div className="sidebar-icon-placeholder"></div> Consultations
-                                </div>
-                                <div className="sidebar-item">
-                                  <div className="sidebar-icon-placeholder"></div> Ordonnances
+                              <div className="mt-4">
+                                <div className="sidebar-section-title text-xs font-bold uppercase tracking-wide text-[#94a3b8] px-3 mb-2">Pilotage</div>
+                                <div className="sidebar-items space-y-1">
+                                  <div className="sidebar-item active flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 text-white border-l-2 border-[#14b8a6]">
+                                    <div className="sidebar-icon-placeholder w-5 h-5 rounded bg-[#14b8a6]"></div>
+                                    <span className="text-sm">Tableau de bord</span>
+                                  </div>
+                                  <div className="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg text-[#94a3b8] hover:bg-white/5">
+                                    <div className="sidebar-icon-placeholder w-5 h-5 rounded bg-white/10"></div>
+                                    <span className="text-sm">Agenda</span>
+                                  </div>
                                 </div>
                               </div>
-                            
-                              <div className="sidebar-section-title">GESTION</div>
-                              <div className="sidebar-items">
-                                <div className="sidebar-item">
-                                  <div className="sidebar-icon-placeholder"></div> Facturation
+                              
+                              <div className="mt-6">
+                                <div className="sidebar-section-title text-xs font-bold uppercase tracking-wide text-[#94a3b8] px-3 mb-2">Cœur de métier</div>
+                                <div className="sidebar-items space-y-1">
+                                  <div className="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg text-[#94a3b8] hover:bg-white/5">
+                                    <div className="sidebar-icon-placeholder w-5 h-5 rounded bg-white/10"></div>
+                                    <span className="text-sm">Dossiers patients</span>
+                                  </div>
+                                  <div className="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg text-[#94a3b8] hover:bg-white/5">
+                                    <div className="sidebar-icon-placeholder w-5 h-5 rounded bg-white/10"></div>
+                                    <span className="text-sm">Salle d'attente</span>
+                                  </div>
                                 </div>
-                                <div className="sidebar-item">
-                                  <div className="sidebar-icon-placeholder"></div> Statistiques
-                                </div>
-                                <div className="sidebar-item">
-                                  <div className="sidebar-icon-placeholder"></div> Horaires
-                                </div>
-                                <div className="sidebar-item">
-                                  <div className="sidebar-icon-placeholder"></div> Paramètres
+                              </div>
+                              
+                              <div className="mt-auto">
+                                <div className="rounded-2xl bg-white/5 p-4">
+                                  <div className="sidebar-section-title text-xs font-bold uppercase tracking-wide text-[#94a3b8] mb-2">Administration</div>
+                                  <div className="text-sm text-white font-medium">Cabinet Central</div>
+                                  <div className="text-xs text-[#94a3b8] mt-1 capitalize">Rôle: Docteur</div>
                                 </div>
                               </div>
                             </div>
-                        
-                            <div className="main-content">
-                              <div className="dash-header">
-                                <div className="search-bar">🔍 Recherche...</div>
-                                <div className="header-right">
-                                  <div className="bell">🔔</div>
-                                  <div className="avatar">DR</div>
+                            
+                            {/* Main Content */}
+                            <div className="main-content flex-1 bg-[#f8fafc] p-6 overflow-hidden">
+                              <div className="dash-header flex items-center justify-between mb-6">
+                                <div>
+                                  <h2 className="text-2xl font-bold text-slate-900">Bonjour, Dr Benali</h2>
+                                  <p className="text-sm text-slate-600 mt-1">Prêt pour une journée productive</p>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-[#2563eb] to-[#14b8a6] flex items-center justify-center text-white font-bold">
+                                    DB
+                                  </div>
                                 </div>
                               </div>
-                        
-                              <div className="stats-row">
-                                <div className="stat-card">
-                                  <div className="stat-label">Patients actifs</div>
-                                  <div className="stat-value blue">1 248</div>
-                                  <div className="stat-badge">↗ +12%</div>
+                              
+                              {/* Stats Cards */}
+                              <div className="stats-row grid grid-cols-4 gap-4 mb-6">
+                                <div className="stat-card bg-white border border-[#e2e8f0] rounded-[21px] px-5 py-4 shadow-sm">
+                                  <div className="stat-label text-xs font-semibold text-slate-600 uppercase">Patients actifs</div>
+                                  <div className="stat-value text-4xl font-black text-blue-700">1,248</div>
+                                  <div className="stat-badge text-xs text-emerald-600 font-semibold mt-1">↗ +12%</div>
                                 </div>
-                                <div className="stat-card">
-                                  <div className="stat-label">RDV aujourd'hui</div>
-                                  <div className="stat-value green">14</div>
-                                  <div className="stat-badge">↗ +3</div>
+                                <div className="stat-card bg-white border border-[#e2e8f0] rounded-[21px] px-5 py-4 shadow-sm">
+                                  <div className="stat-label text-xs font-semibold text-slate-600 uppercase">RDV aujourd'hui</div>
+                                  <div className="stat-value text-4xl font-black text-emerald-700">14</div>
+                                  <div className="stat-badge text-xs text-emerald-600 font-semibold mt-1">↗ +3</div>
                                 </div>
-                                <div className="stat-card">
-                                  <div className="stat-label">Consultations</div>
-                                  <div className="stat-value blue">89</div>
-                                  <div className="stat-badge">↗ ce mois</div>
+                                <div className="stat-card bg-white border border-[#e2e8f0] rounded-[21px] px-5 py-4 shadow-sm">
+                                  <div className="stat-label text-xs font-semibold text-slate-600 uppercase">Consultations</div>
+                                  <div className="stat-value text-4xl font-black text-blue-700">89</div>
+                                  <div className="stat-badge text-xs text-emerald-600 font-semibold mt-1">↗ ce mois</div>
                                 </div>
-                                <div className="stat-card">
-                                  <div className="stat-label">Revenus</div>
-                                  <div className="stat-value gold">42 500 MAD</div>
-                                  <div className="stat-badge">↗ +18%</div>
+                                <div className="stat-card bg-white border border-[#e2e8f0] rounded-[21px] px-5 py-4 shadow-sm">
+                                  <div className="stat-label text-xs font-semibold text-slate-600 uppercase">Revenus</div>
+                                  <div className="stat-value text-4xl font-black text-amber-700">42,500</div>
+                                  <div className="stat-badge text-xs text-amber-600 font-semibold mt-1">MAD</div>
                                 </div>
                               </div>
-                        
-                              <div className="bottom-row">
-                                <div className="appointments-card">
-                                  <div className="card-title">
-                                    Rendez-vous du jour
-                                    <span className="badge-blue">4 aujourd'hui</span>
+                              
+                              {/* Bottom Row */}
+                              <div className="bottom-row grid grid-cols-3 gap-4" style={{ height: '260px' }}>
+                                <div className="appointments-card col-span-2 bg-white border border-[#e2e8f0] rounded-[21px] p-5 shadow-sm">
+                                  <div className="card-title flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-bold text-slate-900">Salle d'attente</h3>
+                                    <span className="badge-blue bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold">6 patients</span>
                                   </div>
-                                  <div className="appt-list">
-                                    <div className="appt-row">
-                                      <div className="appt-avatar green">S</div>
-                                      <div className="appt-info">
-                                        <div className="appt-name">Sarah L.</div>
-                                        <div className="appt-type green">Consultation</div>
+                                  <div className="appt-list space-y-3">
+                                    <div className="appt-row flex items-center gap-4 p-3 bg-slate-50 rounded-xl border-l-4 border-blue-500">
+                                      <div className="appt-avatar w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-sm">M</div>
+                                      <div className="appt-info flex-1">
+                                        <div className="appt-name font-semibold text-slate-900">Marie-Claire Fontaine</div>
+                                        <div className="appt-type text-xs text-slate-600">Consultation annuelle • 09:45</div>
                                       </div>
-                                      <div className="appt-time">09:00</div>
+                                      <div className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">EN COURS</div>
                                     </div>
-                                    <div className="appt-row">
-                                      <div className="appt-avatar blue">M</div>
-                                      <div className="appt-info">
-                                        <div className="appt-name">Mehdi R.</div>
-                                        <div className="appt-type blue">Suivi</div>
+                                    <div className="appt-row flex items-center gap-4 p-3 bg-slate-50 rounded-xl border-l-4 border-red-500">
+                                      <div className="appt-avatar w-10 h-10 rounded-full bg-red-50 text-red-700 flex items-center justify-center font-bold text-sm">J</div>
+                                      <div className="appt-info flex-1">
+                                        <div className="appt-name font-semibold text-slate-900">Jean-Pierre Bertrand</div>
+                                        <div className="appt-type text-xs text-slate-600">Douleurs thoraciques • Attente: 8 min</div>
                                       </div>
-                                      <div className="appt-time">10:30</div>
-                                    </div>
-                                    <div className="appt-row">
-                                      <div className="appt-avatar orange">F</div>
-                                      <div className="appt-info">
-                                        <div className="appt-name">Fatima B.</div>
-                                        <div className="appt-type orange">Ordonnance</div>
-                                      </div>
-                                      <div className="appt-time">11:00</div>
-                                    </div>
-                                    <div className="appt-row">
-                                      <div className="appt-avatar purple">O</div>
-                                      <div className="appt-info">
-                                        <div className="appt-name">Omar S.</div>
-                                        <div className="appt-type purple">Bilan</div>
-                                      </div>
-                                      <div className="appt-time">14:00</div>
+                                      <div className="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">URGENCE</div>
                                     </div>
                                   </div>
                                 </div>
-                        
-                                <div className="right-col">
-                                  <div className="chart-card">
-                                    <div className="card-title">
-                                      Activité — 7 jours
+                                
+                                <div className="right-col flex flex-col gap-4">
+                                  <div className="invoices-card bg-white border border-[#e2e8f0] rounded-[21px] p-5 shadow-sm flex-1">
+                                    <div className="card-title flex items-center justify-between mb-4">
+                                      <h3 className="text-lg font-bold text-slate-900">Tâches du jour</h3>
+                                      <span className="badge-orange bg-amber-50 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold">4</span>
                                     </div>
-                                    <div className="bars">
-                                      <div className="bar-wrap">
-                                        <div className="bar" style={{height: '30%'}}></div>
-                                        <span>L</span>
+                                    <div className="space-y-2">
+                                      <div className="invoice-row flex items-center justify-between p-3 bg-amber-50 rounded-xl border border-amber-100">
+                                        <div>
+                                          <div className="inv-name font-semibold text-slate-900 text-sm">Signer ordonnances</div>
+                                          <div className="inv-sub text-xs text-slate-500">À traiter</div>
+                                        </div>
                                       </div>
-                                      <div className="bar-wrap">
-                                        <div className="bar" style={{height: '50%'}}></div>
-                                        <span>M</span>
+                                      <div className="invoice-row flex items-center justify-between p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                                        <div>
+                                          <div className="inv-name font-semibold text-slate-900 text-sm">Voir résultats</div>
+                                          <div className="inv-sub text-xs text-slate-500">Nouveaux</div>
+                                        </div>
                                       </div>
-                                      <div className="bar-wrap">
-                                        <div className="bar" style={{height: '35%'}}></div>
-                                        <span>M</span>
-                                      </div>
-                                      <div className="bar-wrap">
-                                        <div className="bar" style={{height: '65%'}}></div>
-                                        <span>J</span>
-                                      </div>
-                                      <div className="bar-wrap">
-                                        <div className="bar" style={{height: '45%'}}></div>
-                                        <span>V</span>
-                                      </div>
-                                      <div className="bar-wrap">
-                                        <div className="bar" style={{height: '75%'}}></div>
-                                        <span>S</span>
-                                      </div>
-                                      <div className="bar-wrap active">
-                                        <div className="bar blue" style={{height: '92%'}}></div>
-                                        <span className="blue-text">D</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                        
-                                  <div className="invoices-card">
-                                    <div className="card-title">
-                                      Factures en attente
-                                      <span className="badge-orange">2 en attente</span>
-                                    </div>
-                                    <div className="invoice-row">
-                                      <div>
-                                        <div className="inv-name">M. Chaabi</div>
-                                        <div className="inv-sub">Depuis 3j</div>
-                                      </div>
-                                      <div className="inv-amount">350 MAD</div>
-                                    </div>
-                                    <div className="invoice-row">
-                                      <div>
-                                        <div className="inv-name">Mme. Idrissi</div>
-                                        <div className="inv-sub">Depuis 1j</div>
-                                      </div>
-                                      <div className="inv-amount">120 MAD</div>
                                     </div>
                                   </div>
                                 </div>
