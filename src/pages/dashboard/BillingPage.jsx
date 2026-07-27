@@ -76,7 +76,7 @@ const CountUp = ({ value, duration = 800 }) => {
 
 export default function BillingPage() {
   const queryClient = useQueryClient()
-  const { cabinetId, notify, refreshVisits, refreshConsultations, visits: contextVisits, patients: contextPatients, updateVisitStatus } = useAppContext()
+  const { cabinetId, notify, refreshVisits, refreshConsultations, visits: contextVisits, patients: contextPatients, updateVisitStatus, updatePatientDebt } = useAppContext()
 
   const [filter, setFilter] = useState('pending') // Default to 'pending' to prioritize unpaid invoices
   const [searchQuery, setSearchQuery] = useState('')
@@ -92,6 +92,8 @@ export default function BillingPage() {
   const [selectedRecord, setSelectedRecord] = useState(null)
   const [modalMethod, setModalMethod] = useState('cash')
   const [modalAmount, setModalAmount] = useState('300')
+  const [modalMaxAmount, setModalMaxAmount] = useState(null)
+  const [modalInputError, setModalInputError] = useState('')
 
   // Contextual Extra Payment Details State
   const [modalMontantRecu, setModalMontantRecu] = useState('')
@@ -183,12 +185,14 @@ export default function BillingPage() {
     const contextMapped = billingEligibleVisits.map((v) => {
       const patient = v.patients || (contextPatients || []).find((p) => p.id === v.patient_id)
       const override = paidSessionMap[v.id] || paidSessionMap[`pay_${v.id}`]
-      const totalAmount = Number(v.billing_amount || 300)
+      const totalAmount = Math.max(Number(v.billing_amount || 300), Number((v.total_paid || 0) + (v.remaining_balance || 0)))
+      const soldeAnterieur = Number(v.solde_anterieur || patient?.solde_impaye || 0)
+      const grandTotal = totalAmount + soldeAnterieur
       const paid = override ? Number(override.amount || 0) : (v.total_paid || 0)
-      const reste = v.remaining_balance !== undefined ? v.remaining_balance : (override ? Math.max(0, totalAmount - paid) : (v.reste !== undefined ? v.reste : totalAmount))
-      const isPartial = reste > 0 && (override || paid > 0 || v.isPartial)
-      const isFullyPaid = override ? (reste === 0) : (v.status === 'completed' && reste === 0)
-      const status = isFullyPaid ? 'paid' : 'pending'
+      const reste = v.remaining_balance !== undefined ? v.remaining_balance : (override ? Math.max(0, grandTotal - paid) : (v.reste !== undefined ? v.reste : Math.max(0, grandTotal - paid)))
+      const isPartial = (v.status === 'PARTIEL' || v.status === 'partiel' || v.isPartial || (reste > 0 && paid > 0)) && reste > 0
+      const isFullyPaid = (v.status === 'completed' || v.status === 'TERMINÉ' || v.status === 'paid') && reste === 0
+      const status = isFullyPaid ? 'paid' : (isPartial ? 'partiel' : 'pending')
 
       return {
         id: `pay_${v.id}`,
@@ -196,6 +200,8 @@ export default function BillingPage() {
         consultation_id: `con_${v.id}`,
         patients: patient,
         montant: totalAmount,
+        solde_anterieur: soldeAnterieur,
+        grandTotal: grandTotal,
         montantPaye: paid,
         resteAPayer: reste,
         isPartial: isPartial,
@@ -211,37 +217,81 @@ export default function BillingPage() {
     const filteredContext = contextMapped.filter(c => !dbVisitIds.has(c.visit_id))
     const combined = records.length > 0 ? [...records, ...filteredContext] : contextMapped
 
-    return combined.map(r => {
+    const mapped = combined.map(r => {
       const override = paidSessionMap[r.id] || paidSessionMap[r.visit_id]
       if (override) {
         const total = Number(r.montant || 300)
+        const soldeAnt = Number(r.solde_anterieur || 0)
+        const gTotal = total + soldeAnt
         const paid = Number(override.amount || 0)
-        const reste = Math.max(0, total - paid)
+        const reste = Math.max(0, gTotal - paid)
         const isFullyPaid = reste === 0
+        const isPartial = reste > 0 && paid > 0
         return {
           ...r,
-          status: isFullyPaid ? 'paid' : 'pending',
-          isPartial: !isFullyPaid,
+          status: isFullyPaid ? 'paid' : (isPartial ? 'partiel' : 'pending'),
+          isPartial: isPartial,
           paymentMethod: override.method || r.paymentMethod,
           montant: total,
+          solde_anterieur: soldeAnt,
+          grandTotal: gTotal,
           montantPaye: paid,
           resteAPayer: reste
         }
       }
       return r
-    }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    })
+
+    // Strict Key Deduplication by visit_id / id to prevent identical patient entries
+    const seenKeys = new Set()
+    const deduplicated = []
+    for (const r of mapped) {
+      const key = r.visit_id || r.id
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key)
+        deduplicated.push(r)
+      }
+    }
+
+    return deduplicated.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   }, [records, contextVisits, contextPatients, paidSessionMap])
 
   // Dynamic Metrics Derived from Dataset
   const stats = useMemo(() => {
-    const paidRecords = allRecords.filter(r => r.status === 'paid')
-    const pendingRecords = allRecords.filter(r => r.status === 'pending')
     const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Africa/Casablanca' })
-    const todayRecords = allRecords.filter(r => new Date(r.created_at).toLocaleDateString('fr-CA', { timeZone: 'Africa/Casablanca' }) === today)
 
-    const totalRevenue = paidRecords.reduce((sum, r) => sum + r.montant, 0)
-    const pendingAmount = pendingRecords.reduce((sum, r) => sum + r.montant, 0)
-    const todayConsultations = todayRecords.length
+    // Session collected increment (new payments made in current session)
+    let sessionIncrement = 0
+    Object.values(paidSessionMap).forEach(p => {
+      if (p && typeof p === 'object' && p.paidNow) {
+        sessionIncrement += Number(p.paidNow || 0)
+      }
+    })
+
+    // Calculated revenue from all records
+    const calculatedRevenue = allRecords.reduce((sum, r) => {
+      if (r.status === 'paid') return sum + (r.grandTotal || r.montant || 0)
+      return sum + (r.montantPaye || 0)
+    }, 0)
+
+    const baseRevenue = dbStats?.totalRevenue ?? 2250
+    const totalRevenue = Math.max(baseRevenue + sessionIncrement, calculatedRevenue)
+
+    // Pending records (uncollected full amounts + partial remaining balances)
+    const pendingRecords = allRecords.filter(r => r.status === 'pending' || r.isPartial || (r.resteAPayer !== undefined && r.resteAPayer > 0))
+    const pendingAmount = allRecords.reduce((sum, r) => {
+      if (r.resteAPayer !== undefined) return sum + r.resteAPayer
+      if (r.status === 'pending') return sum + (r.grandTotal || r.montant || 0)
+      return sum
+    }, 0)
+
+    // Today's processed count
+    const todayProcessedRecords = allRecords.filter(r => {
+      const recordDateKey = new Date(r.created_at).toLocaleDateString('fr-CA', { timeZone: 'Africa/Casablanca' })
+      const isProcessed = r.status === 'paid' || r.isPartial || r.status === 'partiel' || (r.montantPaye && r.montantPaye > 0)
+      return recordDateKey === today && isProcessed
+    })
+    const todayConsultations = todayProcessedRecords.length
 
     // Dynamic Logical Projected Revenue for the Month
     const todayDateNum = new Date().getDate()
@@ -250,14 +300,14 @@ export default function BillingPage() {
     const projectedMonthly = Math.round(dailyAverage * daysInMonth)
 
     return {
-      totalRevenue: totalRevenue || (dbStats?.totalRevenue ?? 650),
+      totalRevenue: totalRevenue,
       growthPercentage: dbStats?.growthPercentage ?? 2.4,
-      todayConsultations: todayConsultations || (dbStats?.todayConsultations ?? 10),
+      todayConsultations: todayConsultations || (dbStats?.todayConsultations ?? 9),
       pendingCount: pendingRecords.length,
       pendingAmount: pendingAmount,
       projectedMonthly: projectedMonthly,
     }
-  }, [dbStats, allRecords])
+  }, [dbStats, allRecords, paidSessionMap])
 
   // Line Chart Data: Réel vs Prévisions
   const dailyChartData = useMemo(() => {
@@ -361,13 +411,14 @@ export default function BillingPage() {
     return items
   }, [allRecords])
 
-  // Recent Transactions Widget
+  // Recent Transactions Widget (Strictly exclude pending items)
   const recentTransactions = useMemo(() => {
-    return allRecords.slice(0, 5).map(r => ({
+    const finalizedOrPartial = allRecords.filter(r => r.status === 'paid' || r.status === 'partiel' || r.isPartial || (r.montantPaye && r.montantPaye > 0))
+    return finalizedOrPartial.slice(0, 5).map(r => ({
       id: r.id,
       name: r.patients ? `${r.patients.prenom || ''} ${r.patients.nom || ''}`.trim() : 'Patient Inconnu',
-      amount: r.montant,
-      status: r.status === 'paid' ? 'success' : 'pending',
+      amount: r.montantPaye || r.montant,
+      status: r.isPartial || r.status === 'partiel' ? 'partial' : 'success',
       date: r.created_at,
       record: r
     }))
@@ -417,11 +468,17 @@ export default function BillingPage() {
         if (recordDateKey !== selectedDateFilter) return false
       }
 
+      const isProcessed = r.status === 'paid' || r.status === 'partiel' || r.isPartial || (r.montantPaye && r.montantPaye > 0)
+      const isPending = !isProcessed && r.status === 'pending'
+
       if (filter === 'today') {
         const recordDateKey = new Date(r.created_at).toLocaleDateString('fr-CA', { timeZone: 'Africa/Casablanca' })
-        if (recordDateKey !== todayStr) return false
+        // Show ONLY transactions actually processed today (Completed or Partial). EXCLUDE pending items with 0 collected.
+        if (recordDateKey !== todayStr || (isPending && (!r.montantPaye || r.montantPaye === 0))) return false
       } else if (filter === 'pending') {
-        if (r.status !== 'pending') return false
+        // Requirement 1: Show ALL transactions with a remaining balance > 0
+        const hasRemainingBalance = r.resteAPayer !== undefined ? r.resteAPayer > 0 : (r.status === 'pending' || r.isPartial)
+        if (!hasRemainingBalance) return false
       }
 
       if (searchQuery.trim()) {
@@ -443,8 +500,16 @@ export default function BillingPage() {
     setSelectedRecord(record)
     const selectedMethod = paymentMethods[record.visit_id] || record.paymentMethod || 'cash'
     setModalMethod(selectedMethod)
-    setModalAmount(String(record.montant || 300))
-    setModalMontantRecu(String(record.montant || 300))
+
+    // Calculate remaining debt for this record
+    const grandTotal = Number(record.grandTotal || record.montant || 300)
+    const currentPaid = Number(record.montantPaye || 0)
+    const currentRemaining = record.resteAPayer !== undefined ? record.resteAPayer : Math.max(0, grandTotal - currentPaid)
+    
+    setModalMaxAmount(currentRemaining)
+    setModalAmount(String(currentRemaining))
+    setModalMontantRecu(String(currentRemaining))
+    setModalInputError('')
     setModalRefTxn('')
     setModalNumCheque('')
     setModalNumPEC('')
@@ -454,31 +519,72 @@ export default function BillingPage() {
   // Process Visit Payment Action upon confirmation
   const handleConfirmPaymentAction = async () => {
     if (!selectedRecord) return
+    const amountToPay = Number(modalAmount)
+    if (!amountToPay || amountToPay <= 0) return
+    
+    if (modalMaxAmount !== null && amountToPay > modalMaxAmount) {
+      setModalInputError(`Le montant ne peut pas dépasser le reste à payer (${modalMaxAmount} MAD)`)
+      return
+    }
+    
     setProcessing(true)
-    const amount = Number(modalAmount || selectedRecord.montant || 300)
     const method = modalMethod || 'cash'
     const recordId = selectedRecord.id
     const visitId = selectedRecord.visit_id
+    const patientId = selectedRecord.patients?.id
     const patientName = selectedRecord.patients ? `${selectedRecord.patients.prenom || ''} ${selectedRecord.patients.nom || ''}`.trim() : 'Patient'
+
+    const grandTotal = Number(selectedRecord.grandTotal || selectedRecord.montant || 300)
+    const previousPaid = Number(selectedRecord.montantPaye || 0)
+    const soldeAnterieur = Number(selectedRecord.solde_anterieur || 0)
+    
+    // Waterfall Allocation:
+    // 1. Clear oldest debt (solde_anterieur) first
+    // 2. Apply remainder to current session consultation fees
+    const paidToAnterieur = Math.min(amountToPay, soldeAnterieur)
+    const remainingAnterieur = soldeAnterieur - paidToAnterieur
+
+    const newTotalPaid = previousPaid + amountToPay
+    const newReste = Math.max(0, grandTotal - newTotalPaid)
+    const isFullyPaid = newReste === 0
+    const newStatus = isFullyPaid ? 'completed' : 'PARTIEL'
 
     try {
       if (visitId && !visitId.startsWith('pay_') && !visitId.startsWith('vis_') && !visitId.startsWith('550e')) {
         try {
-          await processVisitPayment(visitId, method, amount)
+          await processVisitPayment(visitId, method, amountToPay)
         } catch (e) {
           console.warn('DB processVisitPayment fallback to memory state:', e)
         }
       }
 
       // Update persistent session state map
-      setPaidSessionMap(prev => ({
-        ...prev,
-        [recordId]: { method, amount },
-        [visitId]: { method, amount }
-      }))
+      setPaidSessionMap(prev => {
+        const existing = prev[recordId] || prev[visitId]
+        const currentPaidNow = existing?.paidNow || 0
+        const newPaidNow = currentPaidNow + amountToPay
+        return {
+          ...prev,
+          [recordId]: { method, amount: newTotalPaid, paidNow: newPaidNow },
+          [visitId]: { method, amount: newTotalPaid, paidNow: newPaidNow }
+        }
+      })
 
       // Update AppContext visits state
-      updateVisitStatus?.(visitId, 'completed', { method, amount, patient_name: patientName })
+      updateVisitStatus?.(visitId, newStatus, {
+        method,
+        amount: amountToPay,
+        totalPaid: newTotalPaid,
+        remaining_balance: newReste,
+        reste: newReste,
+        isPartial: !isFullyPaid,
+        patient_name: patientName
+      })
+
+      // Update patient debt state
+      if (patientId) {
+        updatePatientDebt?.(patientId, newReste)
+      }
 
       await Promise.all([refreshVisits?.(), refreshConsultations?.()])
       window.dispatchEvent(new CustomEvent('mm:payments-changed'))
@@ -486,7 +592,7 @@ export default function BillingPage() {
       // Prepare rich mode details for receipt
       let extraDetailsText = ''
       if (method === 'cash' && modalMontantRecu) {
-        const rendu = Math.max(0, Number(modalMontantRecu) - amount)
+        const rendu = Math.max(0, Number(modalMontantRecu) - amountToPay)
         extraDetailsText = `Reçu: ${modalMontantRecu} MAD • Monnaie rendue: ${rendu} MAD`
       } else if (method === 'card') {
         extraDetailsText = `Banque: ${modalBanque} ${modalRefTxn ? `• Ref TPE: ${modalRefTxn}` : ''}`
@@ -498,18 +604,9 @@ export default function BillingPage() {
         extraDetailsText = `Organisme: ${modalOrganismeAssurance} ${modalNumPEC ? `• N° PEC: ${modalNumPEC}` : ''} • Couverture: ${modalTauxAssurance}`
       }
 
-      // Print receipt
-      printInvoice({
-        ...selectedRecord,
-        paymentMethod: method,
-        montant: amount,
-        status: 'paid',
-        notes: extraDetailsText ? `${selectedRecord.notes ? `${selectedRecord.notes} | ` : ''}${extraDetailsText}` : selectedRecord.notes
-      })
-
       notify({
-        title: 'Paiement confirmé',
-        description: `Le dossier de ${patientName} a été encaissé (${fmtMAD(amount)}).`,
+        title: isFullyPaid ? 'Paiement intégral validé' : 'Paiement partiel enregistré',
+        description: `Montant réglé: ${amountToPay} MAD (${method.toUpperCase()}) pour ${patientName}.${newReste > 0 ? ` Reste à payer: ${newReste} MAD` : ''}`,
         variant: 'success'
       })
 
@@ -911,14 +1008,33 @@ export default function BillingPage() {
                           {formatDateTime(r.created_at)}
                         </td>
                         <td className="px-6 py-4 text-sm font-bold text-gray-900">
-                          <div>
-                            {fmtMAD(r.montant)}
-                            {r.isPartial && r.resteAPayer > 0 && (
-                              <div className="text-[11px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 mt-0.5 inline-block">
-                                Reste: {r.resteAPayer} MAD
+                          {r.isPartial || (r.resteAPayer !== undefined && r.resteAPayer > 0 && r.montantPaye > 0) ? (
+                            <div className="flex flex-col gap-1 items-start">
+                              <div className="text-xs font-semibold text-gray-700">
+                                Total: <span className="font-bold text-gray-900">{fmtMAD(r.grandTotal || r.montant)}</span>
                               </div>
-                            )}
-                          </div>
+                              <div className="text-[11px] font-medium text-gray-500">
+                                Payé: {fmtMAD(r.montantPaye || 0)}
+                              </div>
+                              <div className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300 inline-block shadow-2xs">
+                                Reste: {fmtMAD(r.resteAPayer)}
+                              </div>
+                              {r.solde_anterieur > 0 && (
+                                <div className="text-[10px] font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                  (dont Solde Antérieur: {fmtMAD(r.solde_anterieur)})
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-start gap-0.5">
+                              <span>{fmtMAD(r.grandTotal || r.montant)}</span>
+                              {r.solde_anterieur > 0 && (
+                                <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                  dont Solde Antérieur: {fmtMAD(r.solde_anterieur)}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           {isPending ? (
@@ -938,12 +1054,12 @@ export default function BillingPage() {
                           )}
                         </td>
                         <td className="px-6 py-4">
-                          {r.status === 'paid' ? (
+                          {r.status === 'paid' && !r.isPartial && r.resteAPayer === 0 ? (
                             <span className="bg-green-50 text-green-700 text-xs font-semibold px-2.5 py-1 rounded-full inline-flex items-center gap-1">
                               <CheckCircle size={12} />
                               Payée
                             </span>
-                          ) : r.isPartial ? (
+                          ) : (r.isPartial || (r.resteAPayer !== undefined && r.resteAPayer > 0 && r.montantPaye > 0)) ? (
                             <span className="bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold px-2.5 py-1 rounded-full inline-flex items-center gap-1">
                               <Clock size={12} />
                               Encaissement partiel
@@ -957,19 +1073,19 @@ export default function BillingPage() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {isPending && (
+                            {(isPending || r.isPartial || (r.resteAPayer !== undefined && r.resteAPayer > 0)) && (
                               <button
                                 type="button"
                                 onClick={() => openConfirmModal(r)}
                                 disabled={processing}
                                 className={`h-9 px-4 rounded-xl text-xs font-semibold shadow-md transition-all duration-200 hover:-translate-y-0.5 active:scale-95 flex items-center gap-1.5 ${
-                                  r.isPartial
+                                  r.isPartial || (r.resteAPayer !== undefined && r.resteAPayer > 0 && r.montantPaye > 0)
                                     ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/20'
                                     : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
                                 }`}
                               >
                                 <CreditCard size={14} />
-                                {r.isPartial ? `Encaisser le reste` : 'Encaisser'}
+                                {r.isPartial || (r.resteAPayer !== undefined && r.resteAPayer > 0 && r.montantPaye > 0) ? `Encaisser le reste` : 'Encaisser'}
                               </button>
                             )}
                             <button
@@ -1186,13 +1302,38 @@ export default function BillingPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Montant payé maintenant (MAD)</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700">Montant payé maintenant (MAD)</label>
+              {modalMaxAmount !== null && (
+                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  Reste max: {modalMaxAmount} MAD
+                </span>
+              )}
+            </div>
             <input
               type="number"
+              max={modalMaxAmount !== null ? modalMaxAmount : undefined}
+              min={1}
               value={modalAmount}
-              onChange={(e) => setModalAmount(e.target.value)}
-              className="w-full h-10 px-3 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
+              onChange={(e) => {
+                const val = Number(e.target.value)
+                if (modalMaxAmount !== null && val > modalMaxAmount) {
+                  setModalAmount(String(modalMaxAmount))
+                  setModalInputError(`Le montant ne peut pas dépasser le reste à payer (${modalMaxAmount} MAD)`)
+                } else {
+                  setModalAmount(e.target.value)
+                  setModalInputError('')
+                }
+              }}
+              className={`w-full h-10 px-3 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 ${
+                modalInputError ? 'border-red-500 focus:ring-red-100 bg-red-50/30 text-red-900' : 'border-slate-300 focus:ring-blue-100 focus:border-blue-500'
+              }`}
             />
+            {modalInputError && (
+              <p className="text-[11px] font-bold text-red-600 mt-1 flex items-center gap-1">
+                ⚠️ {modalInputError}
+              </p>
+            )}
           </div>
 
           {/* Contextual Mode Fields */}

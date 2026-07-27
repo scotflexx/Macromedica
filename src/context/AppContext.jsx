@@ -409,6 +409,17 @@ export function AppProvider({ children }) {
     })
   }, [])
 
+  // Update patient debt (solde_impaye)
+  const updatePatientDebt = useCallback((patientId, debtAmount) => {
+    if (!patientId) return
+    setPatients(current => current.map(p => {
+      if (p.id === patientId || p.id === String(patientId)) {
+        return { ...p, solde_impaye: Math.max(0, Number(debtAmount || 0)) }
+      }
+      return p
+    }))
+  }, [])
+
   const value = useMemo(() => ({
     user,
     profile,
@@ -452,6 +463,7 @@ export function AppProvider({ children }) {
     getPatientName: () => 'Patient...',
 
     updateVisitStatus,
+    updatePatientDebt,
 
     refreshPatients: () => profile?.cabinet_id && loadPatients(profile.cabinet_id),
     refreshRdv: () => profile?.cabinet_id && loadRdv(profile.cabinet_id),
@@ -467,7 +479,7 @@ export function AppProvider({ children }) {
         loadDoctors(profile.cabinet_id)
       }
     },
-  }), [user, profile, role, canonicalRole, isAuthenticated, isInitializing, toasts, globalModal, confirmDialog, notificationPrefs, patients, rdvList, consultations, visits, doctors, waitingList, updateVisitStatus])
+  }), [user, profile, role, canonicalRole, isAuthenticated, isInitializing, toasts, globalModal, confirmDialog, notificationPrefs, patients, rdvList, consultations, visits, doctors, waitingList, updateVisitStatus, updatePatientDebt])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

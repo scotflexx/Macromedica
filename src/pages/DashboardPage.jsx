@@ -546,20 +546,23 @@ function PatientCard({ rdv, index, isBusy, onAction, isDoctor, isAlertActive, on
   const totalAmount = rdv?.consultations?.billing_amount || rdv?.billing_amount || 300;
   const visitPayments = allPayments[rdv.id] || [];
   const calculatedPaid = visitPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-  const totalPaidSoFar = calculatedPaid || rdv.total_paid || (rdv.billing_amount ? rdv.billing_amount - (rdv.remaining_balance || 0) : 150);
+  const totalPaidSoFar = calculatedPaid || rdv.total_paid || (rdv.billing_amount ? rdv.billing_amount - (rdv.remaining_balance || 0) : (isHistoryCard ? (rdv.isPartial ? 150 : 300) : 0));
   const reste = rdv.remaining_balance !== undefined ? rdv.remaining_balance : Math.max(0, totalAmount - totalPaidSoFar);
 
-  const isPartialInHistory = isHistoryCard && reste > 0;
+  const isPartial = rdv.status === 'PARTIEL' || rdv.status === 'partiel' || rdv.status === VISIT_STATUSES.PARTIEL || (isHistoryCard && reste > 0);
+  const isPartialInHistory = isHistoryCard && isPartial;
 
   let statusColors = VISIT_STATUS_COLORS[normalizedStatus] || VISIT_STATUS_COLORS[VISIT_STATUSES.WAITING];
   let statusLabel = (rdv.status && VISIT_STATUS_LABELS[rdv.status]) || rdv.time_status || 'En attente';
 
-  if (isPartialInHistory) {
-    statusColors = { border: '#f59e0b', badgeBg: '#fef3c7', badgeText: '#b45309' };
-    statusLabel = 'Paiement partiel';
-  } else if (normalizedStatus === VISIT_STATUSES.BILLING && reste > 0 && totalPaidSoFar > 0) {
-    statusColors = { border: '#f59e0b', badgeBg: '#fef3c7', badgeText: '#b45309' };
-    statusLabel = 'Encaissement partiel';
+  if (isHistoryCard || isPartial || rdv.status === 'PARTIEL' || rdv.status === 'TERMINÉ' || normalizedStatus === VISIT_STATUSES.COMPLETED) {
+    if (isPartial || reste > 0) {
+      statusColors = { border: '#f59e0b', badgeBg: '#fef3c7', badgeText: '#92400e' };
+      statusLabel = `Payé partiellement: ${totalPaidSoFar} MAD / ${totalAmount} MAD`;
+    } else {
+      statusColors = { border: '#16a34a', badgeBg: '#dcfce7', badgeText: '#166534' };
+      statusLabel = `Payé: ${totalPaidSoFar > 0 ? totalPaidSoFar : totalAmount} MAD`;
+    }
   }
   
   // State for button effects
@@ -621,8 +624,8 @@ function PatientCard({ rdv, index, isBusy, onAction, isDoctor, isAlertActive, on
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-base font-bold text-slate-900">{rdv.patient_name || getPatientName(rdv)}</span>
-          <span className="px-2 py-0.5 rounded-md text-xs font-bold" style={{ backgroundColor: statusColors.badgeBg, color: statusColors.badgeText }}>
-            {statusLabel.toUpperCase()}
+          <span className="px-2.5 py-1 rounded-md text-xs font-bold" style={{ backgroundColor: statusColors.badgeBg, color: statusColors.badgeText }}>
+            {statusLabel}
           </span>
           {isSecretary && isAlertActive && (
             <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
@@ -869,6 +872,7 @@ export default function DashboardPage() {
     refreshVisits,
     refreshConsultations,
     updateVisitStatus,
+    updatePatientDebt,
   } = useAppContext()
   const [localRdvList, setLocalRdvList] = useState(rdvList)
   const [selectedDoctors, setSelectedDoctors] = useState({})
@@ -1047,30 +1051,35 @@ export default function DashboardPage() {
         [visitId]: [...(prev[visitId] || []), newPayment]
       }));
 
-      // Handle status update: COMPLETED if fully paid, BILLING (Encaissement partiel) if partial!
-      if (reste === 0) {
-        setPaidVisits(p => new Set([...p, visitId]));
-        updateVisitStatus(visitId, VISIT_STATUSES.COMPLETED, {
-          method: paymentMethod,
-          amount: amountToPay,
-          reste: 0,
-          totalPaid: newTotalPaid
-        });
-        setLocalQueueVisits(v => v.map(visit =>
-          visit.id === visitId ? { ...visit, status: VISIT_STATUSES.COMPLETED, billing_amount: amountToPay, remaining_balance: 0, total_paid: newTotalPaid } : visit
-        ));
-      } else {
-        // Partial payment -> stay in queue / billing as Encaissement Partiel with remaining balance
-        updateVisitStatus(visitId, VISIT_STATUSES.BILLING, {
-          method: paymentMethod,
-          amount: amountToPay,
-          reste: reste,
-          totalPaid: newTotalPaid
-        });
-        setLocalQueueVisits(v => v.map(visit =>
-          visit.id === visitId ? { ...visit, status: VISIT_STATUSES.BILLING, billing_amount: amountToPay, remaining_balance: reste, total_paid: newTotalPaid } : visit
-        ));
+      // Handle status update: COMPLETED / TERMINÉ if fully paid, PARTIEL if partial!
+      const newStatus = reste === 0 ? VISIT_STATUSES.COMPLETED : VISIT_STATUSES.PARTIEL;
+
+      setPaidVisits(p => new Set([...p, visitId]));
+      updateVisitStatus(visitId, newStatus, {
+        method: paymentMethod,
+        amount: amountToPay,
+        reste: reste,
+        remaining_balance: reste,
+        totalPaid: newTotalPaid,
+        total_paid: newTotalPaid,
+        isPartial: reste > 0
+      });
+
+      const patientId = currentPaymentVisit.patientId || currentPaymentVisit.patients?.id || currentPaymentVisit.patient_id;
+      if (patientId) {
+        updatePatientDebt(patientId, reste);
       }
+
+      setLocalQueueVisits(v => v.map(visit =>
+        visit.id === visitId ? { 
+          ...visit, 
+          status: newStatus, 
+          billing_amount: totalAmount, 
+          remaining_balance: reste, 
+          total_paid: newTotalPaid,
+          isPartial: reste > 0 
+        } : visit
+      ));
 
       // Trigger global real-time event & refresh calls
       window.dispatchEvent(new CustomEvent('mm:payments-changed'));
@@ -1198,13 +1207,18 @@ export default function DashboardPage() {
     localQueueVisits.forEach(visit => map.set(visit.id, visit))
     const combined = Array.from(map.values())
     
-    // Exclude COMPLETED from queue, then sort
-    const nonCompleted = combined.filter(visit => visit.status !== VISIT_STATUSES.COMPLETED)
+    // Exclude COMPLETED, TERMINÉ, PARTIEL, and paidVisits from active queue immediately
+    const activeQueue = combined.filter(visit => {
+      const isPaid = paidVisits.has(visit.id)
+      const hasPayments = (allPayments[visit.id] || []).length > 0
+      const isDoneOrPartial = visit.status === VISIT_STATUSES.COMPLETED || visit.status === VISIT_STATUSES.PARTIEL || visit.status === 'PARTIEL' || visit.status === 'TERMINÉ' || visit.status === 'completed' || visit.status === 'partiel'
+      return !isDoneOrPartial && !isPaid && !hasPayments
+    })
     
     // Sort: 
     // - For Secretary: BILLING first
     // - For Doctor: WAITING first, then CONSULTATION, then BILLING
-    const result = [...nonCompleted].sort((a, b) => {
+    const result = [...activeQueue].sort((a, b) => {
       const getPriority = (status) => {
         if (isDoctor) {
           switch(status) {
@@ -1231,15 +1245,20 @@ export default function DashboardPage() {
       return 0; // keep original order for same status
     })
     return result
-  }, [localQueueVisits, visits, isDoctor])
+  }, [localQueueVisits, visits, isDoctor, paidVisits, allPayments])
 
   const filteredHistory = useMemo(() => {
     const map = new Map()
     ;(visits || []).forEach(visit => map.set(visit.id, visit))
     localQueueVisits.forEach(visit => map.set(visit.id, visit))
     const combined = Array.from(map.values())
-    return combined.filter(visit => visit.status === VISIT_STATUSES.COMPLETED)
-  }, [localQueueVisits, visits])
+    return combined.filter(visit => {
+      const isPaid = paidVisits.has(visit.id)
+      const hasPayments = (allPayments[visit.id] || []).length > 0
+      const isDoneOrPartial = visit.status === VISIT_STATUSES.COMPLETED || visit.status === VISIT_STATUSES.PARTIEL || visit.status === 'PARTIEL' || visit.status === 'TERMINÉ' || visit.status === 'completed' || visit.status === 'partiel'
+      return isDoneOrPartial || isPaid || hasPayments
+    })
+  }, [localQueueVisits, visits, paidVisits, allPayments])
   
   // Filtered patients for walk-in search
   const filteredWalkInPatients = useMemo(() => {
