@@ -71,7 +71,7 @@ export default function App() {
           <Route
             path="/facturation"
             element={
-              <RoleGuard roles={['secretaire', 'docteur', 'medecin', 'admin']}>
+              <RoleGuard roles={['secretaire', 'secrétaire', 'secretary', 'docteur', 'medecin', 'doctor', 'admin']}>
                 <BillingPage />
               </RoleGuard>
             }
@@ -79,7 +79,7 @@ export default function App() {
           <Route
             path="/facturation/:id"
             element={
-              <RoleGuard roles={['secretaire', 'docteur', 'medecin', 'admin']}>
+              <RoleGuard roles={['secretaire', 'secrétaire', 'secretary', 'docteur', 'medecin', 'doctor', 'admin']}>
                 <BillingPage />
               </RoleGuard>
             }
@@ -89,19 +89,19 @@ export default function App() {
           <Route
             path="/ai-scribe"
             element={
-              <RoleGuard role="docteur">
+              <RoleGuard roles={['secretaire', 'secrétaire', 'secretary', 'docteur', 'medecin', 'doctor', 'admin']}>
                 <AiScribePage />
               </RoleGuard>
             }
           />
 
-          {/* 5. Tâches */}
+          {/* 6. Tâches */}
           <Route
             path="/taches"
             element={<TasksPage />}
           />
 
-          {/* 6. Paramètres */}
+          {/* 7. Paramètres */}
           <Route
             path="/parametres"
             element={<SettingsPage />}
@@ -111,7 +111,7 @@ export default function App() {
           <Route
             path="/consultation/:visitId"
             element={
-              <RoleGuard role="docteur">
+              <RoleGuard roles={['docteur', 'medecin', 'doctor', 'admin']}>
                 <ConsultationWorkspace />
               </RoleGuard>
             }

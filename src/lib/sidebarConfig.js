@@ -19,6 +19,7 @@ export function getSidebarForRole(role) {
           { label: 'Agenda (RDV)', to: '/agenda', icon: 'calendar-days' },
           { label: 'Patients', to: '/patients', icon: 'folder-heart' },
           { label: 'Facturation', to: '/facturation', icon: 'credit-card' },
+          { label: 'Assistant IA', to: '/ai-scribe', icon: 'bot' },
           { label: 'Paramètres', to: '/parametres', icon: 'settings-2' },
         ],
       },

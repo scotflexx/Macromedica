@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Pill, CheckCircle2, FastForward, Edit3, ShieldCheck, Sparkles, User, Calendar, FileCheck, Stamp } from 'lucide-react'
+import { Pill, CheckCircle2, FastForward, Edit3, ShieldCheck, User, Calendar, Stamp } from 'lucide-react'
 
 export default function PrescriptionViewer({
   task,
@@ -25,19 +25,19 @@ export default function PrescriptionViewer({
   ]
 
   return (
-    <div className="h-full flex flex-col bg-slate-50/60 divide-y divide-slate-200/80">
+    <div className="h-full flex flex-col bg-white">
       {/* Header */}
-      <div className="p-4 bg-white flex items-center justify-between shadow-2xs">
+      <div className="p-4 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center font-bold">
             <Pill size={20} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-slate-900">{task?.description || 'Ordonnance Médicale à Signer'}</h2>
+              <h2 className="text-base font-bold text-slate-900">{task?.description || 'Ordonnance Médicale à Signer'}</h2>
               {isBatchMode && (
-                <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[11px] font-black px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1 animate-pulse">
-                  <FastForward size={12} />
+                <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-black px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1 animate-pulse">
+                  <FastForward size={13} />
                   Mode Rafale ({batchRemainingCount} restant)
                 </span>
               )}
@@ -51,10 +51,10 @@ export default function PrescriptionViewer({
         <button
           type="button"
           onClick={() => onEdit?.(task)}
-          className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-2xs"
+          className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
         >
-          <Edit3 size={14} />
-          Modifier la prescription
+          <Edit3 size={15} />
+          Modifier
         </button>
       </div>
 
@@ -69,26 +69,26 @@ export default function PrescriptionViewer({
           {/* Cabinet Header */}
           <div className="border-b-2 border-slate-900 pb-4 mb-6 flex items-start justify-between">
             <div>
-              <h1 className="text-base font-black text-slate-900 tracking-tight">DR. OTHMANE TOUGGANI</h1>
+              <h1 className="text-lg font-black text-slate-900 tracking-tight">DR. OTHMANE TOUGGANI</h1>
               <p className="text-xs font-bold text-blue-700">Médecine Générale & Cardiologie Clinique</p>
-              <p className="text-[11px] font-medium text-slate-500 mt-1">Cabinet Médical Macromedica • Inscription CNO: 14890</p>
+              <p className="text-xs font-medium text-slate-500 mt-1">Cabinet Médical Macromedica • Inscription CNO: 14890</p>
             </div>
             <div className="text-right text-xs">
               <p className="font-bold text-slate-900">Casablanca, le {signatureDate}</p>
-              <p className="text-[11px] text-slate-400 font-medium">Ref Ordonnance: #ORD-2026-992</p>
+              <p className="text-xs text-slate-400 font-medium">Ref Ordonnance: #ORD-2026-992</p>
             </div>
           </div>
 
           {/* Patient Details Box */}
-          <div className="bg-amber-50/50 rounded-xl p-3.5 mb-6 border border-amber-200/60 flex items-center justify-between text-xs">
+          <div className="bg-amber-50/60 rounded-2xl p-4 mb-6 border border-amber-200/60 flex items-center justify-between text-sm">
             <div className="flex items-center gap-2">
-              <User size={15} className="text-amber-700" />
-              <span className="font-bold text-slate-900">{task?.patientName}</span>
+              <User size={16} className="text-amber-700" />
+              <span className="font-bold text-slate-900 text-base">{task?.patientName}</span>
               <span className="text-slate-400">|</span>
               <span className="text-slate-600 font-medium">Âge: 54 ans</span>
             </div>
-            <div className="flex items-center gap-1.5 text-slate-500 font-medium">
-              <Calendar size={13} strokeWidth={2.5} />
+            <div className="flex items-center gap-1.5 text-slate-500 font-medium text-xs">
+              <Calendar size={14} strokeWidth={2.5} />
               <span>Ordonnance Valable: 3 Mois</span>
             </div>
           </div>
@@ -100,20 +100,20 @@ export default function PrescriptionViewer({
             </h3>
 
             {medications.map((med, index) => (
-              <div key={index} className="p-3.5 rounded-xl border border-slate-100 bg-slate-50/70 space-y-1">
+              <div key={index} className="p-4 rounded-xl border border-slate-100 bg-slate-50/70 space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-extrabold text-slate-900">{index + 1}. {med.name}</span>
-                  <span className="text-xs font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-md border border-amber-200">
+                  <span className="text-base font-extrabold text-slate-900">{index + 1}. {med.name}</span>
+                  <span className="text-xs font-bold text-amber-800 bg-amber-100/80 px-2.5 py-0.5 rounded-md border border-amber-200">
                     {med.duration}
                   </span>
                 </div>
-                <div className="text-xs font-semibold text-slate-700 flex items-center gap-3">
+                <div className="text-sm font-semibold text-slate-700 flex items-center gap-3">
                   <span>Posologie: <strong>{med.dosage}</strong></span>
                   <span>•</span>
                   <span>Fréquence: <strong>{med.freq}</strong></span>
                 </div>
                 {med.note && (
-                  <p className="text-[11px] font-medium text-slate-500 italic pt-0.5">
+                  <p className="text-xs font-medium text-slate-500 italic pt-0.5">
                     Conseil: {med.note}
                   </p>
                 )}
@@ -122,9 +122,9 @@ export default function PrescriptionViewer({
           </div>
 
           {/* Interactive Signature Box */}
-          <div className="border-2 border-dashed border-slate-300 rounded-2xl p-4 bg-slate-50/50 flex flex-col items-center justify-center text-center relative">
+          <div className="border-2 border-dashed border-slate-300 rounded-2xl p-5 bg-slate-50/50 flex flex-col items-center justify-center text-center relative">
             <div className="text-xs font-bold text-slate-600 mb-2 flex items-center gap-1.5">
-              <Stamp size={15} className="text-blue-600" />
+              <Stamp size={16} className="text-blue-600" />
               Signature & Cachet Électronique Médecin
             </div>
 
@@ -134,14 +134,14 @@ export default function PrescriptionViewer({
                   <CheckCircle2 size={24} className="text-emerald-600" />
                 </div>
                 <span className="text-xs font-black uppercase tracking-wider">DOCUMENT SIGNÉ ÉLECTRONIQUEMENT</span>
-                <span className="text-[10px] text-slate-400 font-medium">Horodaté le {signatureDate} • Certificat MACROMEDICA OK</span>
+                <span className="text-xs text-slate-400 font-medium">Horodaté le {signatureDate} • Certificat MACROMEDICA OK</span>
               </div>
             ) : (
               <div className="py-2 flex flex-col items-center gap-1">
                 <div className="font-serif italic text-2xl text-blue-900 font-bold opacity-80 select-none">
                   Dr. Othmane Touggani
                 </div>
-                <span className="text-[10px] font-semibold text-slate-400">Prêt pour la signature numérique</span>
+                <span className="text-xs font-semibold text-slate-400">Prêt pour la signature numérique</span>
               </div>
             )}
           </div>
@@ -149,9 +149,9 @@ export default function PrescriptionViewer({
       </div>
 
       {/* Sticky Bottom Bar */}
-      <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between gap-3 shadow-md">
+      <div className="p-4 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
-          <ShieldCheck size={16} className="text-emerald-600" />
+          <ShieldCheck size={18} className="text-emerald-600" />
           <span>Certifié conforme CNO Maroc</span>
         </div>
 
@@ -159,9 +159,9 @@ export default function PrescriptionViewer({
           type="button"
           onClick={handleSign}
           disabled={isProcessing}
-          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold shadow-md shadow-amber-500/20 transition-all duration-200 hover:-translate-y-0.5 active:scale-95 flex items-center gap-2 disabled:opacity-50"
+          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-sm font-bold shadow-md shadow-amber-500/20 transition-all duration-200 hover:-translate-y-0.5 active:scale-95 flex items-center gap-2 disabled:opacity-50"
         >
-          <CheckCircle2 size={16} />
+          <CheckCircle2 size={18} />
           {hasSigned ? 'Signé ! Suivant...' : isBatchMode ? '⚡ Signer & Suivant' : 'Signer l\'ordonnance'}
         </button>
       </div>
