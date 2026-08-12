@@ -16,7 +16,11 @@ import {
   Archive,
   User,
   Clock,
-  ChevronRight
+  ChevronRight,
+  Phone,
+  CreditCard,
+  X,
+  FileCheck
 } from 'lucide-react'
 import Tooltip from './ui/Tooltip'
 import LabResultViewer from './LabResultViewer'
@@ -41,6 +45,14 @@ export default function GatekeeperStandardView({
 }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState('all')
+
+  // Payment Collection Modal State
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState('cash')
+  const [sendReceiptWhatsApp, setSendReceiptWhatsApp] = useState(true)
+
+  // Patient Contact Modal State
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false)
 
   const isDoctorView = roleView === 'doctor'
 
@@ -104,17 +116,29 @@ export default function GatekeeperStandardView({
     triggerActionAndAdvance(() => {
       notify?.({
         title: 'Tâche Escaladée 🩺',
-        description: `La tâche administrative de ${task.patientName} a été transmise au Docteur.`,
+        description: `La tâche administrative de ${task.patientName} a été transmise au Médecin.`,
         variant: 'success'
       })
       handleResolveTask(task.id, 'Escaladée au médecin')
     })
   }
 
-  const handleApproveAndClose = (task) => {
+  const handleConfirmPayment = () => {
+    if (!selectedTask) return
+    setIsPaymentModalOpen(false)
+
     triggerActionAndAdvance(() => {
-      handleResolveTask(task.id, `Tâche de ${task.patientName} approuvée et clôturée.`)
+      notify?.({
+        title: 'Encaissement Réussi 💳',
+        description: `Règlement de 300 MAD enregistré pour ${selectedTask.patientName} (${paymentMethod.toUpperCase()}). Reçu envoyé par WhatsApp.`,
+        variant: 'success'
+      })
+      handleResolveTask(selectedTask.id, `Encaissement effectué pour ${selectedTask.patientName}.`)
     })
+  }
+
+  const handleContactPatient = () => {
+    setIsContactModalOpen(true)
   }
 
   return (
@@ -151,7 +175,7 @@ export default function GatekeeperStandardView({
             />
           </div>
 
-          {/* 🚀 FILTER PILLS WITH FLEX-WRAP (NO HORIZONTAL SCROLL) */}
+          {/* Filter Pills with Flex-Wrap (No Horizontal Scroll) */}
           <div className="flex flex-wrap gap-1.5 pt-0.5">
             {categoriesList.map(cat => (
               <button
@@ -241,7 +265,7 @@ export default function GatekeeperStandardView({
             <div className="text-4xl mb-2">🩺</div>
             <p className="text-sm font-bold text-slate-800">Aucune tâche sélectionnée</p>
             <p className="text-xs text-slate-400 mt-1">
-              Sélectionnez une tâche dans le fil de triage pour consulter les détails et exécuter les actions.
+              Sélectionnez une tâche dans le fil de triage pour consulter les détails.
             </p>
           </div>
         ) : (
@@ -271,8 +295,8 @@ export default function GatekeeperStandardView({
               {selectedTask.category === 'resultats' && (
                 <LabResultViewer
                   task={selectedTask}
-                  onApproveAndSend={() => handleApproveAndClose(selectedTask)}
-                  onArchive={() => handleArchive(selectedTask)}
+                  onApproveAndSend={() => triggerActionAndAdvance(() => handleResolveTask(selectedTask.id))}
+                  onArchive={() => triggerActionAndAdvance(() => handleArchive(selectedTask))}
                   isProcessing={isProcessing}
                 />
               )}
@@ -280,7 +304,7 @@ export default function GatekeeperStandardView({
               {selectedTask.category === 'prescriptions' && (
                 <PrescriptionViewer
                   task={selectedTask}
-                  onSignNext={() => handleSignNextPrescription(selectedTask)}
+                  onSignNext={() => triggerActionAndAdvance(() => handleSignNextPrescription(selectedTask))}
                   onEdit={() => {}}
                   isBatchMode={false}
                   batchRemainingCount={1}
@@ -291,7 +315,7 @@ export default function GatekeeperStandardView({
               {selectedTask.category === 'messages' && (
                 <PatientMessageViewer
                   task={selectedTask}
-                  onSendReply={(replyText) => handleSendReply(selectedTask, replyText)}
+                  onSendReply={(replyText) => triggerActionAndAdvance(() => handleSendReply(selectedTask, replyText))}
                   isProcessing={isProcessing}
                 />
               )}
@@ -302,9 +326,6 @@ export default function GatekeeperStandardView({
                 selectedTask.category === 'cnss') && (
                 <AdminTaskViewer
                   task={selectedTask}
-                  onResolve={() => handleAdminResolve(selectedTask)}
-                  onContact={() => {}}
-                  isProcessing={isProcessing}
                 />
               )}
 
@@ -317,70 +338,300 @@ export default function GatekeeperStandardView({
                   </h4>
                 </div>
                 <p className="text-xs text-indigo-900/90 font-medium leading-relaxed">
-                  {selectedTask.category === 'urgences'
-                    ? 'Patient présente une HTA critique (185/110 mmHg). Transmettre en priorité au médecin et planifier un ECG immédiat.'
-                    : selectedTask.category === 'resultats'
-                    ? 'Résultats biologiques dans les normes. Valider et envoyer le compte-rendu automatiquement par WhatsApp.'
-                    : selectedTask.category === 'prescriptions'
-                    ? 'Ordonnance vérifiée et conforme à l\'historique médical du patient. Prête pour signature électronique.'
-                    : selectedTask.category === 'facturation'
-                    ? 'Anomalie de télétransmission CNSS détectée. Vérifier l\'immatriculation du patient et revalider la facture.'
-                    : 'Dossier administratif vérifié. Cliquer sur l\'action ci-dessous pour valider sans ouvrir de sous-formulaire.'}
+                  {selectedTask.category === 'facturation'
+                    ? 'Règlement en attente. Cliquer sur "Encaisser le règlement" pour ouvrir le sous-module d\'encaissement rapide et valider la facture.'
+                    : selectedTask.category === 'cnss'
+                    ? 'Dossier CNSS/CNOPS prêt pour télétransmission. Cliquer sur "Valider & Transmettre" pour archiver.'
+                    : selectedTask.category === 'confirmations'
+                    ? 'Le patient attend la confirmation de son RDV. Transmettre la validation et notifier par SMS/WhatsApp.'
+                    : selectedTask.category === 'urgences'
+                    ? 'Tension critique (185/110 mmHg). Transmettre en priorité au médecin et planifier un ECG.'
+                    : 'Dossier médical vérifié par le système. Cliquez sur le bouton principal pour traiter et clôturer.'}
                 </p>
               </div>
             </div>
 
-            {/* 🚀 UPGRADED PRIMARY ACTION BUTTONS FOOTER (ZERO-CLICK WORKFLOW) */}
-            <div className="p-3.5 border-t border-slate-200 bg-slate-50/90 shrink-0 flex items-center justify-between gap-3 flex-wrap">
-              {/* Secondary Escalation for Secretary */}
-              {!isDoctorView && (
-                <Tooltip position="top-start" content="Transmettre ce dossier administratif pour avis médical au docteur">
+            {/* 🚀 REFACTORED CONSOLIDATED ACTION BAR (CONTEXT-AWARE PRIMARY + SECONDARY HELPERS) */}
+            <div className="p-3.5 border-t border-slate-200 bg-slate-50/90 shrink-0 flex items-center justify-between gap-2.5 flex-wrap">
+              {/* SECONDARY HELPER ACTIONS */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* 1. Contacter le patient */}
+                <Tooltip position="top-start" content="Appeler ou envoyer un message WhatsApp au patient">
                   <button
                     type="button"
-                    onClick={() => handleEscalateToDoctor(selectedTask)}
-                    className="h-10 px-4 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-2xs hover:-translate-y-0.5 active:scale-95"
+                    onClick={handleContactPatient}
+                    className="h-9 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-2xs hover:-translate-y-0.5 active:scale-95"
                   >
-                    <ArrowUpRight size={15} className="text-amber-600" />
-                    <span>[ ↗️ Escalader au Médecin ]</span>
+                    <Phone size={14} className="text-blue-600" />
+                    <span>📞 Contacter</span>
                   </button>
                 </Tooltip>
-              )}
 
-              <div className="flex items-center gap-2.5 ml-auto">
-                <button
-                  type="button"
-                  onClick={() => triggerActionAndAdvance(() => handleArchive(selectedTask))}
-                  className="h-10 px-4 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-2xs hover:-translate-y-0.5 active:scale-95"
-                >
-                  <Archive size={15} className="text-slate-500" />
-                  <span>[ 📁 Archiver ]</span>
-                </button>
+                {/* 2. Escalader au Médecin (Secretary View Only) */}
+                {!isDoctorView && (
+                  <Tooltip position="top-start" content="Transmettre ce dossier au médecin avec priorité haute">
+                    <button
+                      type="button"
+                      onClick={() => handleEscalateToDoctor(selectedTask)}
+                      className="h-9 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-2xs hover:-translate-y-0.5 active:scale-95"
+                    >
+                      <ArrowUpRight size={14} className="text-amber-600" />
+                      <span>↗️ Escalader au Médecin</span>
+                    </button>
+                  </Tooltip>
+                )}
 
-                {selectedTask.category === 'messages' && (
+                {/* 3. Archiver (Silent Archive) */}
+                <Tooltip position="top-start" content="Archiver silencieusement la tâche au dossier">
                   <button
                     type="button"
-                    onClick={() => triggerActionAndAdvance(() => handleSendReply(selectedTask, 'Réponse type transmise'))}
-                    className="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5 hover:-translate-y-0.5 active:scale-95"
+                    onClick={() => triggerActionAndAdvance(() => handleArchive(selectedTask))}
+                    className="h-9 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-2xs hover:-translate-y-0.5 active:scale-95"
                   >
-                    <Send size={15} />
-                    <span>[ 💬 Répondre & Clôturer ]</span>
+                    <Archive size={14} className="text-slate-500" />
+                    <span>📁 Archiver</span>
+                  </button>
+                </Tooltip>
+              </div>
+
+              {/* CONTEXT-AWARE PRIMARY ACTION BUTTON */}
+              <div className="ml-auto shrink-0">
+                {/* A. FACTURATION / IMPAYÉ -> 💳 Encaisser le règlement */}
+                {(selectedTask.category === 'facturation' || selectedTask.category === 'impaye') && (
+                  <button
+                    type="button"
+                    onClick={() => setIsPaymentModalOpen(true)}
+                    disabled={isProcessing}
+                    className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs shadow-md shadow-emerald-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
+                  >
+                    <CreditCard size={16} />
+                    <span>💳 Encaisser le règlement</span>
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => handleApproveAndClose(selectedTask)}
-                  disabled={isProcessing}
-                  className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs shadow-md shadow-emerald-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
-                >
-                  <CheckCircle2 size={16} />
-                  <span>[ ✅ Approuver & Clôturer ]</span>
-                </button>
+                {/* B. CNSS / DOSSIER -> ✅ Valider & Transmettre */}
+                {(selectedTask.category === 'cnss' || selectedTask.category === 'dossier') && (
+                  <button
+                    type="button"
+                    onClick={() => triggerActionAndAdvance(() => handleResolveTask(selectedTask.id, `Dossier CNSS de ${selectedTask.patientName} transmis.`))}
+                    disabled={isProcessing}
+                    className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs shadow-md shadow-emerald-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
+                  >
+                    <FileCheck size={16} />
+                    <span>✅ Valider & Transmettre</span>
+                  </button>
+                )}
+
+                {/* C. CONFIRMATIONS / MESSAGES -> 💬 Répondre / Confirmer RDV */}
+                {(selectedTask.category === 'confirmations' || (selectedTask.category === 'messages' && !isDoctorView)) && (
+                  <button
+                    type="button"
+                    onClick={() => triggerActionAndAdvance(() => handleResolveTask(selectedTask.id, `RDV/Message confirmé pour ${selectedTask.patientName}.`))}
+                    disabled={isProcessing}
+                    className="h-10 px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
+                  >
+                    <Send size={15} />
+                    <span>💬 Répondre / Confirmer RDV</span>
+                  </button>
+                )}
+
+                {/* D. PRESCRIPTIONS (Doctor View) -> ⚡ Valider & Signer l'ordonnance */}
+                {selectedTask.category === 'prescriptions' && (
+                  <button
+                    type="button"
+                    onClick={() => triggerActionAndAdvance(() => handleSignNextPrescription(selectedTask))}
+                    disabled={isProcessing}
+                    className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs shadow-md shadow-emerald-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
+                  >
+                    <CheckCircle2 size={16} />
+                    <span>⚡ Valider & Signer l'ordonnance</span>
+                  </button>
+                )}
+
+                {/* E. RESULTATS (Doctor View) -> 🔬 Valider le compte-rendu */}
+                {selectedTask.category === 'resultats' && (
+                  <button
+                    type="button"
+                    onClick={() => triggerActionAndAdvance(() => handleResolveTask(selectedTask.id, `Bilan/Résultat de ${selectedTask.patientName} approuvé.`))}
+                    disabled={isProcessing}
+                    className="h-10 px-5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-black text-xs shadow-md shadow-purple-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
+                  >
+                    <CheckCircle2 size={16} />
+                    <span>🔬 Valider le compte-rendu</span>
+                  </button>
+                )}
+
+                {/* F. URGENCES -> 🚨 Traiter l'urgence */}
+                {selectedTask.category === 'urgences' && (
+                  <button
+                    type="button"
+                    onClick={() => triggerActionAndAdvance(() => handleResolveTask(selectedTask.id, `Urgence médicale de ${selectedTask.patientName} prise en charge.`))}
+                    disabled={isProcessing}
+                    className="h-10 px-5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs shadow-md shadow-red-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
+                  >
+                    <AlertCircle size={16} />
+                    <span>🚨 Traiter l'urgence</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* 🚀 PAYMENT COLLECTION MODAL (`💳 Encaisser le règlement`) */}
+      {isPaymentModalOpen && selectedTask && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 border border-slate-100 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                  <CreditCard size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">Encaissement du Règlement</h3>
+                  <p className="text-[11px] text-slate-400 font-medium">Facturation & Secrétariat</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Patient & Amount Details Box */}
+            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-4 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-semibold">Patient:</span>
+                <span className="font-extrabold text-slate-900 text-sm">{selectedTask.patientName}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs border-t border-emerald-200/60 pt-2">
+                <span className="text-slate-500 font-semibold">Montant à encaisser:</span>
+                <span className="font-black text-emerald-700 text-base">300 MAD</span>
+              </div>
+            </div>
+
+            {/* Payment Method Selector */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 block">Mode de paiement</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('cash')}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                    paymentMethod === 'cash'
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-400/30'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  💵 Espèces
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('tpe')}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                    paymentMethod === 'tpe'
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-400/30'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  💳 TPE / Carte
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('virement')}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                    paymentMethod === 'virement'
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-400/30'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  🏦 Virement
+                </button>
+              </div>
+            </div>
+
+            {/* Send Receipt WhatsApp Checkbox */}
+            <label className="flex items-center gap-2 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={sendReceiptWhatsApp}
+                onChange={(e) => setSendReceiptWhatsApp(e.target.checked)}
+                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+              />
+              <span className="text-xs text-slate-700 font-semibold">
+                Envoyer le reçu électronique par WhatsApp au patient
+              </span>
+            </label>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmPayment}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md flex items-center gap-1.5 transition-all"
+              >
+                <CheckCircle2 size={16} />
+                <span>Confirmer l'Encaissement</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 PATIENT CONTACT MODAL */}
+      {isContactModalOpen && selectedTask && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4 border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="text-xs font-black text-slate-900">📞 Contacter {selectedTask.patientName}</h3>
+              <button
+                type="button"
+                onClick={() => setIsContactModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  window.open(`https://wa.me/212600000000?text=Bonjour%20${encodeURIComponent(selectedTask.patientName)},%20concernant%20votre%20dossier%20médical...`, '_blank')
+                  setIsContactModalOpen(false)
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+              >
+                💬 Envoyer un Message WhatsApp
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  window.open('tel:+212600000000')
+                  setIsContactModalOpen(false)
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-900 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+              >
+                📞 Appeler sur le Téléphone
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
