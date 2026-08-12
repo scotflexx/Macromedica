@@ -80,6 +80,13 @@ export function AppProvider({ children }) {
   const currentUserIdRef = useRef(null)
   const initDoneRef = useRef(false)
 
+  // Helper to extract clean error message string instead of [object Object]
+  const extractErrorMessage = (err) => {
+    if (!err) return 'Erreur inconnue'
+    if (typeof err === 'string') return err
+    return err.message || err.error_description || err.details || err.hint || (typeof err === 'object' ? JSON.stringify(err) : String(err))
+  }
+
   // Fetch profile by user ID
   const fetchProfile = useCallback(async (userId) => {
     try {
@@ -91,7 +98,8 @@ export function AppProvider({ children }) {
       if (error) throw error
       return data
     } catch (err) {
-      console.error('Profile fetch error:', err)
+      const errMsg = extractErrorMessage(err)
+      console.error('Profile fetch error:', errMsg)
       return null
     }
   }, [])
@@ -100,12 +108,12 @@ export function AppProvider({ children }) {
     try {
       const { data, error } = await supabase.from('patients').select('*').eq('cabinet_id', cId).order('created_at', { ascending: false })
       if (error) {
-        console.error('Patients load error:', error)
+        console.error('Patients load error:', extractErrorMessage(error))
         return
       }
       if (data && data.length > 0) setPatients(data)
     } catch (err) {
-      console.error('Patients load error:', err)
+      console.error('Patients load error:', extractErrorMessage(err))
     }
   }, [])
 
@@ -120,12 +128,12 @@ export function AppProvider({ children }) {
         .lte('date_rdv', `${today}T23:59:59`)
         .order('date_rdv', { ascending: true })
       if (error) {
-        console.error('Rdv load error:', error)
+        console.error('Rdv load error:', extractErrorMessage(error))
         return
       }
       if (data && data.length > 0) setRdvList(data)
     } catch (err) {
-      console.error('Rdv load error:', err)
+      console.error('Rdv load error:', extractErrorMessage(err))
     }
   }, [])
 
@@ -133,12 +141,12 @@ export function AppProvider({ children }) {
     try {
       const { data, error } = await supabase.from('consultations').select(`*, patients(nom, prenom)`).eq('cabinet_id', cId).order('date_consult', { ascending: false })
       if (error) {
-        console.error('Consultations load error:', error)
+        console.error('Consultations load error:', extractErrorMessage(error))
         return
       }
       if (data && data.length > 0) setConsultations(data)
     } catch (err) {
-      console.error('Consultations load error:', err)
+      console.error('Consultations load error:', extractErrorMessage(err))
     }
   }, [])
 
@@ -147,7 +155,7 @@ export function AppProvider({ children }) {
       const data = await getTodayVisits(cId)
       if (data && data.length > 0) setVisits(data)
     } catch (err) {
-      console.error('Visits load error:', err?.message || err?.code || err)
+      console.error('Visits load error:', extractErrorMessage(err))
     }
   }, [])
 
@@ -156,7 +164,7 @@ export function AppProvider({ children }) {
       const data = await getDoctors(cId)
       setDoctors(data && data.length > 0 ? data : MOCK_DOCTORS)
     } catch (err) {
-      console.error('Doctors load error:', err)
+      console.error('Doctors load error:', extractErrorMessage(err))
       setDoctors(MOCK_DOCTORS)
     }
   }, [])

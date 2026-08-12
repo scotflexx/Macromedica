@@ -8,7 +8,7 @@ import TachesHub from '../../components/taches/TachesHub'
 
 export default function TasksPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const { role, canonicalRole, devRoleOverride, notify } = useAppContext()
+  const { role, canonicalRole, devRoleOverride, notify, updateVisitStatus, visits = [] } = useAppContext()
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -18,7 +18,7 @@ export default function TasksPage() {
   const isUserDoctor = (canonicalRole || role) === 'doctor' || (canonicalRole || role) === 'docteur' || devRoleOverride === 'doctor'
   const [roleView, setRoleView] = useState(isUserDoctor ? 'doctor' : 'secretary')
 
-  // Initial mock tasks matching rich 5-pane requirements
+  // Initial mock tasks matching rich requirements
   const [tasks, setTasks] = useState([
     {
       id: 'task_01',
@@ -104,8 +104,58 @@ export default function TasksPage() {
       metadata: 'Secrétariat',
       actionText: 'Confirmer',
       status: 'À valider'
+    },
+    {
+      id: 'task_10',
+      category: 'cnss',
+      patientName: 'Lina Mansouri',
+      description: 'Dossier prise en charge CNOPS à transmettre',
+      metadata: 'Secrétariat',
+      actionText: 'Transmettre',
+      status: 'En attente'
+    },
+    {
+      id: 'task_11',
+      category: 'facturation',
+      patientName: 'Mehdi Cherkaoui',
+      description: 'Règlement Impayé Consultation',
+      metadata: 'Secrétariat',
+      actionText: 'Relancer',
+      status: 'Impayé'
     }
   ])
+
+  // Real-time listener for automated Facturation <-> Tasks Sync
+  useEffect(() => {
+    const handlePaymentsChanged = () => {
+      // Find pending or partial payment visits that need secretary task attention
+      const billingVisits = (visits || []).filter(v => v.status === 'billing' || (v.remaining_balance && v.remaining_balance > 0))
+      
+      if (billingVisits.length === 0) return
+
+      setTasks(prevTasks => {
+        const existingTaskIds = new Set(prevTasks.map(t => t.id))
+        const newBillingTasks = billingVisits
+          .filter(v => !existingTaskIds.has(v.id) && !existingTaskIds.has(`task_${v.id}`))
+          .map(v => ({
+            id: `task_${v.id}`,
+            visit_id: v.id,
+            category: 'facturation',
+            patientName: v.patients ? `${v.patients.prenom || ''} ${v.patients.nom || ''}`.trim() : (v.patient_name || 'Patient'),
+            description: `Facture / Reste à régler (${v.remaining_balance || v.billing_amount || 300} MAD)`,
+            metadata: 'Facturation',
+            actionText: 'Régler',
+            status: 'À régler',
+            amount: v.billing_amount || 300
+          }))
+
+        return newBillingTasks.length > 0 ? [...newBillingTasks, ...prevTasks] : prevTasks
+      })
+    }
+
+    window.addEventListener('mm:payments-changed', handlePaymentsChanged)
+    return () => window.removeEventListener('mm:payments-changed', handlePaymentsChanged)
+  }, [visits])
 
   // Category filter state
   const initialCategory = searchParams.get('category') || 'all'
@@ -138,7 +188,7 @@ export default function TasksPage() {
 
   // Filter tasks based on role view & search query
   const doctorTaskCategories = ['urgences', 'resultats', 'prescriptions', 'messages']
-  const secretaryTaskCategories = ['facturation', 'confirmations', 'cnss', 'messages']
+  const secretaryTaskCategories = ['facturation', 'confirmations', 'cnss']
 
   const isDoctorView = roleView === 'doctor'
 
@@ -175,8 +225,24 @@ export default function TasksPage() {
     }
   }, [filteredTasks, selectedTask])
 
+  // 🚀 AUTOMATED TASK RESOLUTION & FACTURATION SYNC
   const handleResolveTask = (taskId, successMessage = 'Tâche traitée avec succès') => {
     setIsProcessing(true)
+    const targetTask = tasks.find(t => t.id === taskId)
+
+    // Synchronize Facturation payment state if resolving a billing/facturation task
+    if (targetTask && (targetTask.category === 'facturation' || targetTask.visit_id)) {
+      const vId = targetTask.visit_id || targetTask.id
+      if (updateVisitStatus) {
+        updateVisitStatus(vId, 'completed', {
+          amount: targetTask.amount || 300,
+          reste: 0,
+          method: 'cash'
+        })
+      }
+      window.dispatchEvent(new CustomEvent('mm:payments-changed'))
+    }
+
     setTimeout(() => {
       setTasks(prev => {
         const remaining = prev.filter(t => t.id !== taskId)
@@ -194,7 +260,7 @@ export default function TasksPage() {
       })
 
       notify?.({
-        title: 'Tâche terminée',
+        title: 'Tâche terminée & Synchronisée ⚡',
         description: successMessage,
         variant: 'success'
       })
