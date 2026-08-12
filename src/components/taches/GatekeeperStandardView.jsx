@@ -175,16 +175,16 @@ export default function GatekeeperStandardView({
             />
           </div>
 
-          {/* Filter Pills with Flex-Wrap (No Horizontal Scroll) */}
-          <div className="flex flex-wrap gap-1.5 pt-0.5">
+          {/* 🚀 FIX 1: SINGLE HORIZONTAL LINE FILTER PILLS (NO LINE-BREAKS) */}
+          <div className="flex flex-row items-center flex-nowrap overflow-x-auto gap-2 py-1 no-scrollbar">
             {categoriesList.map(cat => (
               <button
                 key={cat.id}
                 type="button"
                 onClick={() => setActiveCategory(cat.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap shrink-0 transition-all ${
                   activeCategory === cat.id
-                    ? 'bg-slate-900 text-white shadow-2xs'
+                    ? 'bg-slate-900 text-white shadow-2xs font-black'
                     : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60'
                 }`}
               >
@@ -213,12 +213,33 @@ export default function GatekeeperStandardView({
                 <div
                   key={t.id}
                   onClick={() => setSelectedTaskId(t.id)}
-                  className={`p-3 rounded-xl border transition-all cursor-pointer relative ${
+                  className={`group relative p-3 rounded-xl border transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-blue-50/90 border-blue-500 shadow-xs ring-1 ring-blue-400/40'
                       : 'bg-white border-slate-200/80 hover:bg-slate-50/80 hover:border-slate-300'
                   }`}
                 >
+                  {/* 🚀 RICH TASK PREVIEW POPOVER ON HOVER */}
+                  <div className="pointer-events-none absolute z-50 hidden group-hover:block transition-all duration-200 bottom-full mb-2 left-0 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700/90 text-xs space-y-1.5 backdrop-blur-md">
+                    <div className="flex items-center justify-between border-b border-slate-700/80 pb-1">
+                      <span className="font-black text-white text-xs truncate">{t.patientName}</span>
+                      <span className="bg-blue-500/20 text-blue-300 text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-blue-400/30">
+                        {t.status || 'En attente'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 text-[11px] text-slate-300 font-medium">
+                      <p className="leading-snug">
+                        <strong className="text-slate-100 font-bold">Objet:</strong> {t.description || t.object}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[9.5px] text-slate-400 pt-1 border-t border-slate-800 font-semibold">
+                      <span>CIN: AB-89210 • 📞 0661-234567</span>
+                      <span>🕒 {t.metadata || '10:30'}</span>
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between gap-1.5 mb-1">
                     <div className="flex items-center gap-1.5 min-w-0">
                       {isUrgent && (
@@ -229,8 +250,9 @@ export default function GatekeeperStandardView({
                     <span className="text-[10px] text-slate-400 font-medium shrink-0">{t.metadata}</span>
                   </div>
 
-                  <p className="text-[11px] text-slate-600 font-medium line-clamp-1 mb-2">
-                    {t.description}
+                  {/* 🚀 FIX 2: EXPLICIT CARD DESCRIPTION RENDERING */}
+                  <p className="text-xs text-slate-600 font-medium truncate mt-0.5 block line-clamp-1 mb-2">
+                    {t.description || t.object || t.details || 'Aucune description'}
                   </p>
 
                   <div className="flex items-center justify-between">
@@ -351,7 +373,7 @@ export default function GatekeeperStandardView({
               </div>
             </div>
 
-            {/* 🚀 REFACTORED CONSOLIDATED ACTION BAR (CONTEXT-AWARE PRIMARY + SECONDARY HELPERS) */}
+            {/* CONSOLIDATED ACTION BAR (CONTEXT-AWARE PRIMARY + SECONDARY HELPERS) */}
             <div className="p-3.5 border-t border-slate-200 bg-slate-50/90 shrink-0 flex items-center justify-between gap-2.5 flex-wrap">
               {/* SECONDARY HELPER ACTIONS */}
               <div className="flex items-center gap-2 flex-wrap">
@@ -396,7 +418,6 @@ export default function GatekeeperStandardView({
 
               {/* CONTEXT-AWARE PRIMARY ACTION BUTTON */}
               <div className="ml-auto shrink-0">
-                {/* A. FACTURATION / IMPAYÉ -> 💳 Encaisser le règlement */}
                 {(selectedTask.category === 'facturation' || selectedTask.category === 'impaye') && (
                   <button
                     type="button"
@@ -409,7 +430,6 @@ export default function GatekeeperStandardView({
                   </button>
                 )}
 
-                {/* B. CNSS / DOSSIER -> ✅ Valider & Transmettre */}
                 {(selectedTask.category === 'cnss' || selectedTask.category === 'dossier') && (
                   <button
                     type="button"
@@ -422,7 +442,6 @@ export default function GatekeeperStandardView({
                   </button>
                 )}
 
-                {/* C. CONFIRMATIONS / MESSAGES -> 💬 Répondre / Confirmer RDV */}
                 {(selectedTask.category === 'confirmations' || (selectedTask.category === 'messages' && !isDoctorView)) && (
                   <button
                     type="button"
@@ -435,7 +454,6 @@ export default function GatekeeperStandardView({
                   </button>
                 )}
 
-                {/* D. PRESCRIPTIONS (Doctor View) -> ⚡ Valider & Signer l'ordonnance */}
                 {selectedTask.category === 'prescriptions' && (
                   <button
                     type="button"
@@ -448,7 +466,6 @@ export default function GatekeeperStandardView({
                   </button>
                 )}
 
-                {/* E. RESULTATS (Doctor View) -> 🔬 Valider le compte-rendu */}
                 {selectedTask.category === 'resultats' && (
                   <button
                     type="button"
@@ -461,7 +478,6 @@ export default function GatekeeperStandardView({
                   </button>
                 )}
 
-                {/* F. URGENCES -> 🚨 Traiter l'urgence */}
                 {selectedTask.category === 'urgences' && (
                   <button
                     type="button"
@@ -479,7 +495,7 @@ export default function GatekeeperStandardView({
         )}
       </div>
 
-      {/* 🚀 PAYMENT COLLECTION MODAL (`💳 Encaisser le règlement`) */}
+      {/* PAYMENT COLLECTION MODAL */}
       {isPaymentModalOpen && selectedTask && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 border border-slate-100 animate-in fade-in zoom-in-95">
@@ -502,7 +518,6 @@ export default function GatekeeperStandardView({
               </button>
             </div>
 
-            {/* Patient & Amount Details Box */}
             <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-4 space-y-2">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-slate-500 font-semibold">Patient:</span>
@@ -514,7 +529,6 @@ export default function GatekeeperStandardView({
               </div>
             </div>
 
-            {/* Payment Method Selector */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-700 block">Mode de paiement</label>
               <div className="grid grid-cols-3 gap-2">
@@ -556,7 +570,6 @@ export default function GatekeeperStandardView({
               </div>
             </div>
 
-            {/* Send Receipt WhatsApp Checkbox */}
             <label className="flex items-center gap-2 cursor-pointer pt-1">
               <input
                 type="checkbox"
@@ -569,7 +582,6 @@ export default function GatekeeperStandardView({
               </span>
             </label>
 
-            {/* Modal Actions */}
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
@@ -591,7 +603,7 @@ export default function GatekeeperStandardView({
         </div>
       )}
 
-      {/* 🚀 PATIENT CONTACT MODAL */}
+      {/* PATIENT CONTACT MODAL */}
       {isContactModalOpen && selectedTask && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4 border border-slate-100">

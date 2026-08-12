@@ -71,7 +71,7 @@ export default function KanbanMatrixView({
     setSelectedTaskIds([])
   }
 
-  // 🚀 SMART KANBAN TRANSITION LOGIC (`Avancer` Rules)
+  // SMART KANBAN TRANSITION LOGIC (`Avancer` Rules)
   const advanceCard = (task) => {
     setMatrixTasks(prev =>
       prev.map(t => {
@@ -80,7 +80,6 @@ export default function KanbanMatrixView({
         let nextCol = t.column
 
         if (t.column === 'col1') {
-          // Column 1 (À Trier) -> Column 2
           nextCol = 'col2'
           notify?.({
             title: 'Tâche Qualifiée',
@@ -88,9 +87,7 @@ export default function KanbanMatrixView({
             variant: 'success'
           })
         } else if (t.column === 'col2') {
-          // Column 2 (Validation)
           if (isDoctorView) {
-            // Doctor: Signs/confirms -> Column 3 (En Cours Patient) + WhatsApp notification simulation
             nextCol = 'col3'
             notify?.({
               title: 'Décision Validée 📱',
@@ -98,7 +95,6 @@ export default function KanbanMatrixView({
               variant: 'success'
             })
           } else {
-            // Secretary: Resolves administrative block -> Column 4 (Clôturé)
             nextCol = 'col4'
             notify?.({
               title: 'Dossier Administratif Validé',
@@ -113,7 +109,6 @@ export default function KanbanMatrixView({
     )
   }
 
-  // Move Column 3 (En Cours Patient) manually to Column 4 (Clôturé)
   const handleManualClose = (taskId) => {
     setMatrixTasks(prev =>
       prev.map(t => t.id === taskId ? { ...t, column: 'col4' } : t)
@@ -125,7 +120,6 @@ export default function KanbanMatrixView({
     })
   }
 
-  // Reopen Column 4 task back to Column 2
   const handleReopenTask = (taskId) => {
     setMatrixTasks(prev =>
       prev.map(t => t.id === taskId ? { ...t, column: 'col2' } : t)
@@ -173,7 +167,7 @@ export default function KanbanMatrixView({
 
   return (
     <div className="space-y-4 relative">
-      {/* 🚀 STICKY TOOLBAR (FOR DOCTOR VS SECRETARY) */}
+      {/* STICKY TOOLBAR */}
       <div className="sticky top-0 z-10 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-3.5 shadow-md text-white flex flex-col md:flex-row md:items-center justify-between gap-3 border border-indigo-900/60">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 flex items-center justify-center font-bold shrink-0">
@@ -198,7 +192,7 @@ export default function KanbanMatrixView({
           </div>
         </div>
 
-        {/* 🚀 ROLE RESTRICTION: DOCTOR GETS BATCH SIGNING BAR, SECRETARY GETS STATUS COUNTER BANNER */}
+        {/* ROLE RESTRICTION BANNER */}
         {isDoctorView ? (
           <div className="flex items-center gap-3">
             <span className="text-xs font-bold text-indigo-200">
@@ -218,7 +212,6 @@ export default function KanbanMatrixView({
             </Tooltip>
           </div>
         ) : (
-          /* Secretary View Counter Banner (NO Batch Signing) */
           <div className="flex items-center gap-2 bg-white/10 px-3.5 py-1.5 rounded-xl border border-white/10 shrink-0">
             <FileCheck size={16} className="text-emerald-400" />
             <span className="text-xs font-extrabold text-white">
@@ -245,7 +238,7 @@ export default function KanbanMatrixView({
                 </span>
               </div>
 
-              {/* Column Cards Feed (High Density) */}
+              {/* Column Cards Feed */}
               <div className="flex-1 overflow-y-auto space-y-2 pr-0.5">
                 {colTasks.length === 0 ? (
                   <div className="py-12 text-center text-slate-400 text-[11px] font-medium border-2 border-dashed border-slate-200/80 rounded-xl bg-white/50">
@@ -259,7 +252,7 @@ export default function KanbanMatrixView({
                     return (
                       <div
                         key={task.id}
-                        className={`p-2.5 rounded-xl border transition-all bg-white shadow-2xs space-y-1.5 ${
+                        className={`group relative p-2.5 rounded-xl border transition-all bg-white shadow-2xs space-y-1.5 ${
                           isChecked
                             ? 'border-amber-500 ring-2 ring-amber-400/40 bg-amber-50/30'
                             : isUrgent
@@ -267,29 +260,47 @@ export default function KanbanMatrixView({
                             : 'border-slate-200/80 hover:border-slate-300'
                         }`}
                       >
+                        {/* 🚀 RICH TASK PREVIEW POPOVER ON HOVER (REPLACES GENERIC CHECKBOX TOOLTIP) */}
+                        <div className="pointer-events-none absolute z-50 hidden group-hover:block transition-all duration-200 bottom-full mb-2 left-0 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700/90 text-xs space-y-1.5 backdrop-blur-md">
+                          <div className="flex items-center justify-between border-b border-slate-700/80 pb-1">
+                            <span className="font-black text-white text-xs truncate">{task.patientName}</span>
+                            <span className="bg-blue-500/20 text-blue-300 text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-blue-400/30">
+                              {task.status || 'En attente'}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 text-[11px] text-slate-300 font-medium">
+                            <p className="leading-snug">
+                              <strong className="text-slate-100 font-bold">Objet:</strong> {task.description || task.object}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[9.5px] text-slate-400 pt-1 border-t border-slate-800 font-semibold">
+                            <span>CIN: AB-89210 • 📞 0661-234567</span>
+                            <span>🕒 {task.time || '10:30'} • {isDoctorView ? 'Docteur' : 'Secrétariat'}</span>
+                          </div>
+                        </div>
+
                         {/* Card Header */}
                         <div className="flex items-start gap-1.5">
-                          {/* Checkbox ONLY in Vue Docteur for Column 2 */}
+                          {/* Checkbox ONLY in Vue Docteur for Column 2 (NO Generic Tooltip) */}
                           {isDoctorView && col.id === 'col2' && (
-                            <Tooltip position="top-start" content="Cocher pour la validation rapide en lot">
-                              <button
-                                type="button"
-                                onClick={() => toggleSelect(task.id)}
-                                className="text-slate-400 hover:text-amber-600 mt-0.5 shrink-0"
-                              >
-                                {isChecked ? (
-                                  <CheckSquare size={15} className="text-amber-600" />
-                                ) : (
-                                  <Square size={15} />
-                                )}
-                              </button>
-                            </Tooltip>
+                            <button
+                              type="button"
+                              onClick={() => toggleSelect(task.id)}
+                              className="text-slate-400 hover:text-amber-600 mt-0.5 shrink-0"
+                            >
+                              {isChecked ? (
+                                <CheckSquare size={15} className="text-amber-600" />
+                              ) : (
+                                <Square size={15} />
+                              )}
+                            </button>
                           )}
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-1">
                               <div className="flex items-center gap-1.5 min-w-0">
-                                {/* 🚀 SUBTLE RED WARNING DOT FOR URGENT TASKS */}
                                 {isUrgent && (
                                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" title="Urgent" />
                                 )}
@@ -302,13 +313,14 @@ export default function KanbanMatrixView({
                               </span>
                             </div>
 
-                            <p className="text-[10px] text-slate-600 font-medium line-clamp-2 mt-0.5">
-                              {task.description}
+                            {/* 🚀 FIX 2: EXPLICIT CARD DESCRIPTION RENDERING */}
+                            <p className="text-[10px] text-slate-600 font-medium line-clamp-2 mt-0.5 block">
+                              {task.description || task.object || task.details || 'Aucune description'}
                             </p>
                           </div>
                         </div>
 
-                        {/* 🚀 SMART KANBAN TRANSITION ACTION FOOTER */}
+                        {/* Card Action Footer */}
                         <div className="flex items-center justify-between pt-1 border-t border-slate-100 flex-wrap gap-1">
                           <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${
                             isUrgent
@@ -318,21 +330,17 @@ export default function KanbanMatrixView({
                             {task.category.toUpperCase()}
                           </span>
 
-                          {/* Column 1 & Column 2: Render Avancer Button */}
                           {(col.id === 'col1' || col.id === 'col2') && (
-                            <Tooltip position="top-end" content={col.id === 'col1' ? "Transmettre à la colonne de validation" : (isDoctorView ? "Valider & transmettre au patient via WhatsApp" : "Valider et clôturer ce dossier")}>
-                              <button
-                                type="button"
-                                onClick={() => advanceCard(task)}
-                                className="text-[9px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded flex items-center gap-0.5 transition-colors border border-blue-200/60"
-                              >
-                                <span>Avancer</span>
-                                <ArrowRight size={10} />
-                              </button>
-                            </Tooltip>
+                            <button
+                              type="button"
+                              onClick={() => advanceCard(task)}
+                              className="text-[9px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded flex items-center gap-0.5 transition-colors border border-blue-200/60"
+                            >
+                              <span>Avancer</span>
+                              <ArrowRight size={10} />
+                            </button>
                           )}
 
-                          {/* Column 3: DISABLE manual Avancer button! Replace with Status Badge + Clôturer */}
                           {col.id === 'col3' && (
                             <div className="flex items-center gap-1.5">
                               <span className="text-[9px] font-extrabold text-purple-800 bg-purple-100/90 border border-purple-200 px-1.5 py-0.5 rounded flex items-center gap-1">
@@ -349,7 +357,6 @@ export default function KanbanMatrixView({
                             </div>
                           )}
 
-                          {/* Column 4: NO Avancer button! Replace with Archiver / Rouvrir */}
                           {col.id === 'col4' && (
                             <div className="flex items-center gap-1">
                               <button
