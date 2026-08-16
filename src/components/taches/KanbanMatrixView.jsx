@@ -15,6 +15,7 @@ import {
   FileCheck
 } from 'lucide-react'
 import Tooltip from './ui/Tooltip'
+import ClinicalPeekPopover from './ui/ClinicalPeekPopover'
 
 export default function KanbanMatrixView({
   tasks = [],
@@ -25,25 +26,24 @@ export default function KanbanMatrixView({
   const [selectedTaskIds, setSelectedTaskIds] = useState([])
   const [matrixTasks, setMatrixTasks] = useState([
     // Medical Tasks (Vue Docteur)
-    { id: 'm1', patientName: 'Hind Boukili', category: 'prescriptions', description: 'Ordonnance Amlor 5mg (HTA)', column: 'col2', time: '09:15', isUrgent: false, isDoctorOnly: true },
-    { id: 'm2', patientName: 'Youssef Idrissi', category: 'prescriptions', description: 'Renouvellement Diabète HbA1c', column: 'col2', time: '09:40', isUrgent: false, isDoctorOnly: true },
-    { id: 'm3', patientName: 'Karim Amrani', category: 'resultats', description: 'Bilan sanguin complet & lipides', column: 'col1', time: '08:30', isUrgent: false, isDoctorOnly: true },
-    { id: 'm4', patientName: 'Meryem Tazi', category: 'urgences', description: 'Tension 185/110 mmHg (Urgence)', column: 'col2', time: '10:05', isUrgent: true, isDoctorOnly: true },
-    { id: 'm5', patientName: 'Omar Bennani', category: 'messages', description: 'Question sur posologie antibiotique', column: 'col3', time: '11:20', isUrgent: false, isDoctorOnly: true },
-    { id: 'm7', patientName: 'Fatima El Amrani', category: 'prescriptions', description: 'Renouvellement Diabète & HTA', column: 'col2', time: '11:45', isUrgent: false, isDoctorOnly: true },
+    { id: 'm1', patientName: 'Hind Boukili', category: 'prescriptions', description: 'Ordonnance Amlor 5mg (HTA)', column: 'col2', time: '09:15', isUrgent: false, isDoctorOnly: true, cin: 'AB-99412', phone: '06 61 44 22 11' },
+    { id: 'm2', patientName: 'Youssef Idrissi', category: 'prescriptions', description: 'Renouvellement Diabète HbA1c', column: 'col2', time: '09:40', isUrgent: false, isDoctorOnly: true, cin: 'CD-11204', phone: '06 62 88 99 00' },
+    { id: 'm3', patientName: 'Karim Amrani', category: 'resultats', description: 'Bilan sanguin complet & lipides', column: 'col1', time: '08:30', isUrgent: false, isDoctorOnly: true, cin: 'EF-33491', phone: '06 63 55 44 33' },
+    { id: 'm4', patientName: 'Meryem Tazi', category: 'urgences', description: 'Tension 185/110 mmHg (Urgence)', column: 'col2', time: '10:05', isUrgent: true, isDoctorOnly: true, cin: 'AB-88419', phone: '06 61 23 45 67' },
+    { id: 'm5', patientName: 'Omar Bennani', category: 'messages', description: 'Question sur posologie antibiotique', column: 'col3', time: '11:20', isUrgent: false, isDoctorOnly: true, cin: 'GH-77812', phone: '06 64 11 22 33' },
+    { id: 'm7', patientName: 'Fatima El Amrani', category: 'prescriptions', description: 'Renouvellement Diabète & HTA', column: 'col2', time: '11:45', isUrgent: false, isDoctorOnly: true, cin: 'JK-44109', phone: '06 65 99 88 77' },
 
     // Administrative Tasks (Vue Secrétaire)
-    { id: 's1', patientName: 'Sarah Benali', category: 'facturation', description: 'Anomalie Dossier Mutuelle CNSS', column: 'col2', time: 'Hier', isUrgent: false, isDoctorOnly: false },
-    { id: 's2', patientName: 'Ahmed Bennani', category: 'confirmations', description: 'Demande de confirmation RDV Demain', column: 'col1', time: '09:00', isUrgent: false, isDoctorOnly: false },
-    { id: 's3', patientName: 'Lina Mansouri', category: 'cnss', description: 'Prise en charge CNOPS à transmettre', column: 'col2', time: '10:30', isUrgent: false, isDoctorOnly: false },
-    { id: 's4', patientName: 'Mehdi Cherkaoui', category: 'facturation', description: 'Règlement Impayé Consultation', column: 'col3', time: '11:00', isUrgent: false, isDoctorOnly: false }
+    { id: 's1', patientName: 'Sarah Benali', category: 'facturation', description: 'Anomalie Dossier Mutuelle CNSS', column: 'col2', time: 'Hier', isUrgent: false, isDoctorOnly: false, cin: 'LM-22019', phone: '06 66 33 22 11' },
+    { id: 's2', patientName: 'Ahmed Bennani', category: 'confirmations', description: 'Demande de confirmation RDV Demain', column: 'col1', time: '09:00', isUrgent: false, isDoctorOnly: false, cin: 'NO-55821', phone: '06 67 44 55 66' },
+    { id: 's3', patientName: 'Lina Mansouri', category: 'cnss', description: 'Prise en charge CNOPS à transmettre', column: 'col2', time: '10:30', isUrgent: false, isDoctorOnly: false, cin: 'PQ-99102', phone: '06 68 77 66 55' },
+    { id: 's4', patientName: 'Mehdi Cherkaoui', category: 'facturation', description: 'Règlement Impayé Consultation', column: 'col3', time: '11:00', isUrgent: false, isDoctorOnly: false, cin: 'RS-33890', phone: '06 69 11 00 22' }
   ])
 
   const isDoctorView = roleView === 'doctor'
   const doctorCategories = ['urgences', 'resultats', 'prescriptions', 'messages']
   const secretaryCategories = ['facturation', 'confirmations', 'cnss']
 
-  // Filter matrix tasks by active role view
   const roleFilteredMatrixTasks = matrixTasks.filter(t =>
     isDoctorView ? doctorCategories.includes(t.category) : secretaryCategories.includes(t.category)
   )
@@ -54,7 +54,6 @@ export default function KanbanMatrixView({
     )
   }
 
-  // Doctor Batch Signing (Column 2)
   const handleBatchSign = () => {
     if (selectedTaskIds.length === 0) return
 
@@ -71,7 +70,6 @@ export default function KanbanMatrixView({
     setSelectedTaskIds([])
   }
 
-  // SMART KANBAN TRANSITION LOGIC (`Avancer` Rules)
   const advanceCard = (task) => {
     setMatrixTasks(prev =>
       prev.map(t => {
@@ -221,17 +219,20 @@ export default function KanbanMatrixView({
         )}
       </div>
 
-      {/* 4-COLUMN KANBAN MATRIX WITH HIGH DENSITY CARDS */}
+      {/* 4-COLUMN KANBAN MATRIX WITH CLINICAL PEEK HOVER POPOVERS OPENING DOWN */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 h-[calc(100vh-17rem)] min-h-[550px]">
-        {columns.map(col => {
+        {columns.map((col, colIdx) => {
           const colTasks = roleFilteredMatrixTasks.filter(t => t.column === col.id)
+          // Position popover opening DOWN below the card (bottom-start or bottom-end)
+          const popoverPos = colIdx >= 2 ? 'bottom-end' : 'bottom-start'
+
           return (
             <div
               key={col.id}
-              className={`h-full rounded-2xl border p-2.5 flex flex-col overflow-hidden ${col.bgColor}`}
+              className={`h-full rounded-2xl border p-2.5 flex flex-col ${col.bgColor}`}
             >
               {/* Column Header */}
-              <div className="p-2 rounded-xl bg-white/90 border border-slate-200/80 mb-2.5 flex items-center justify-between font-bold text-xs shadow-2xs">
+              <div className="p-2 rounded-xl bg-white/90 border border-slate-200/80 mb-2.5 flex items-center justify-between font-bold text-xs shadow-2xs shrink-0">
                 <span className="text-slate-800 font-black text-[11px]">{col.title}</span>
                 <span className={`px-2 py-0.5 rounded-full font-black text-[10px] border ${col.badgeColor}`}>
                   {col.count}
@@ -250,127 +251,106 @@ export default function KanbanMatrixView({
                     const isUrgent = task.isUrgent || task.category === 'urgences'
 
                     return (
-                      <div
-                        key={task.id}
-                        className={`group relative p-2.5 rounded-xl border transition-all bg-white shadow-2xs space-y-1.5 ${
-                          isChecked
-                            ? 'border-amber-500 ring-2 ring-amber-400/40 bg-amber-50/30'
-                            : isUrgent
-                            ? 'border-red-300 bg-red-50/10'
-                            : 'border-slate-200/80 hover:border-slate-300'
-                        }`}
-                      >
-                        {/* 🚀 RICH TASK PREVIEW POPOVER ON HOVER (REPLACES GENERIC CHECKBOX TOOLTIP) */}
-                        <div className="pointer-events-none absolute z-50 hidden group-hover:block transition-all duration-200 bottom-full mb-2 left-0 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700/90 text-xs space-y-1.5 backdrop-blur-md">
-                          <div className="flex items-center justify-between border-b border-slate-700/80 pb-1">
-                            <span className="font-black text-white text-xs truncate">{task.patientName}</span>
-                            <span className="bg-blue-500/20 text-blue-300 text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-blue-400/30">
-                              {task.status || 'En attente'}
-                            </span>
-                          </div>
-
-                          <div className="space-y-1 text-[11px] text-slate-300 font-medium">
-                            <p className="leading-snug">
-                              <strong className="text-slate-100 font-bold">Objet:</strong> {task.description || task.object}
-                            </p>
-                          </div>
-
-                          <div className="flex items-center justify-between text-[9.5px] text-slate-400 pt-1 border-t border-slate-800 font-semibold">
-                            <span>CIN: AB-89210 • 📞 0661-234567</span>
-                            <span>🕒 {task.time || '10:30'} • {isDoctorView ? 'Docteur' : 'Secrétariat'}</span>
-                          </div>
-                        </div>
-
-                        {/* Card Header */}
-                        <div className="flex items-start gap-1.5">
-                          {/* Checkbox ONLY in Vue Docteur for Column 2 (NO Generic Tooltip) */}
-                          {isDoctorView && col.id === 'col2' && (
-                            <button
-                              type="button"
-                              onClick={() => toggleSelect(task.id)}
-                              className="text-slate-400 hover:text-amber-600 mt-0.5 shrink-0"
-                            >
-                              {isChecked ? (
-                                <CheckSquare size={15} className="text-amber-600" />
-                              ) : (
-                                <Square size={15} />
-                              )}
-                            </button>
-                          )}
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                {isUrgent && (
-                                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" title="Urgent" />
+                      <ClinicalPeekPopover key={task.id} task={task} position={popoverPos}>
+                        <div
+                          className={`p-2.5 rounded-xl border transition-all bg-white shadow-2xs space-y-1.5 ${
+                            isChecked
+                              ? 'border-amber-500 ring-2 ring-amber-400/40 bg-amber-50/30'
+                              : isUrgent
+                              ? 'border-red-300 bg-red-50/10'
+                              : 'border-slate-200/80 hover:border-slate-300'
+                          }`}
+                        >
+                          {/* Card Header */}
+                          <div className="flex items-start gap-1.5">
+                            {/* Checkbox ONLY in Vue Docteur for Column 2 */}
+                            {isDoctorView && col.id === 'col2' && (
+                              <button
+                                type="button"
+                                onClick={() => toggleSelect(task.id)}
+                                className="text-slate-400 hover:text-amber-600 mt-0.5 shrink-0"
+                              >
+                                {isChecked ? (
+                                  <CheckSquare size={15} className="text-amber-600" />
+                                ) : (
+                                  <Square size={15} />
                                 )}
-                                <h4 className="text-[11px] font-bold text-slate-900 truncate">
-                                  {task.patientName}
-                                </h4>
-                              </div>
-                              <span className="text-[9px] text-slate-400 font-semibold shrink-0">
-                                {task.time}
-                              </span>
-                            </div>
+                              </button>
+                            )}
 
-                            {/* 🚀 FIX 2: EXPLICIT CARD DESCRIPTION RENDERING */}
-                            <p className="text-[10px] text-slate-600 font-medium line-clamp-2 mt-0.5 block">
-                              {task.description || task.object || task.details || 'Aucune description'}
-                            </p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  {isUrgent && (
+                                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" title="Urgent" />
+                                  )}
+                                  <h4 className="text-[11px] font-bold text-slate-900 truncate">
+                                    {task.patientName}
+                                  </h4>
+                                </div>
+                                <span className="text-[9px] text-slate-400 font-semibold shrink-0">
+                                  {task.time}
+                                </span>
+                              </div>
+
+                              <p className="text-[10px] text-slate-600 font-medium line-clamp-2 mt-0.5 block">
+                                {task.description || task.object || task.details || 'Aucune description'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Card Action Footer */}
+                          <div className="flex items-center justify-between pt-1 border-t border-slate-100 flex-wrap gap-1">
+                            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${
+                              isUrgent
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                            }`}>
+                              {task.category.toUpperCase()}
+                            </span>
+
+                            {(col.id === 'col1' || col.id === 'col2') && (
+                              <button
+                                type="button"
+                                onClick={() => advanceCard(task)}
+                                className="text-[9px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded flex items-center gap-0.5 transition-colors border border-blue-200/60"
+                              >
+                                <span>Avancer</span>
+                                <ArrowRight size={10} />
+                              </button>
+                            )}
+
+                            {col.id === 'col3' && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] font-extrabold text-purple-800 bg-purple-100/90 border border-purple-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                  <Clock size={10} />
+                                  <span>En attente patient</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleManualClose(task.id)}
+                                  className="text-[9px] font-bold text-emerald-700 hover:bg-emerald-100 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded transition-colors"
+                                >
+                                  Clôturer
+                                </button>
+                              </div>
+                            )}
+
+                            {col.id === 'col4' && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleReopenTask(task.id)}
+                                  className="text-[9px] font-bold text-slate-600 hover:bg-slate-100 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 transition-colors"
+                                >
+                                  <RotateCcw size={9} />
+                                  <span>Rouvrir</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
-
-                        {/* Card Action Footer */}
-                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 flex-wrap gap-1">
-                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${
-                            isUrgent
-                              ? 'bg-red-50 text-red-700 border-red-200'
-                              : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                          }`}>
-                            {task.category.toUpperCase()}
-                          </span>
-
-                          {(col.id === 'col1' || col.id === 'col2') && (
-                            <button
-                              type="button"
-                              onClick={() => advanceCard(task)}
-                              className="text-[9px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded flex items-center gap-0.5 transition-colors border border-blue-200/60"
-                            >
-                              <span>Avancer</span>
-                              <ArrowRight size={10} />
-                            </button>
-                          )}
-
-                          {col.id === 'col3' && (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[9px] font-extrabold text-purple-800 bg-purple-100/90 border border-purple-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                                <Clock size={10} />
-                                <span>En attente patient</span>
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleManualClose(task.id)}
-                                className="text-[9px] font-bold text-emerald-700 hover:bg-emerald-100 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded transition-colors"
-                              >
-                                Clôturer
-                              </button>
-                            </div>
-                          )}
-
-                          {col.id === 'col4' && (
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleReopenTask(task.id)}
-                                className="text-[9px] font-bold text-slate-600 hover:bg-slate-100 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded flex items-center gap-0.5 transition-colors"
-                              >
-                                <RotateCcw size={9} />
-                                <span>Rouvrir</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      </ClinicalPeekPopover>
                     )
                   })
                 )}

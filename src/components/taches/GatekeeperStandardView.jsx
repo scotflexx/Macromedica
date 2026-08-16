@@ -23,6 +23,7 @@ import {
   FileCheck
 } from 'lucide-react'
 import Tooltip from './ui/Tooltip'
+import ClinicalPeekPopover from './ui/ClinicalPeekPopover'
 import LabResultViewer from './LabResultViewer'
 import PrescriptionViewer from './PrescriptionViewer'
 import PatientMessageViewer from './PatientMessageViewer'
@@ -99,504 +100,409 @@ export default function GatekeeperStandardView({
   // Auto-advance helper for zero-click workflow
   const triggerActionAndAdvance = (actionFn) => {
     if (!selectedTask) return
-    const currentIdx = visibleTasks.findIndex(t => t.id === selectedTask.id)
+    const currentIdx = visibleTasks.findIndex(t => t.id === selectedTaskId)
     const nextTask = visibleTasks[currentIdx + 1] || visibleTasks[currentIdx - 1] || null
 
     actionFn()
 
     if (nextTask) {
       setSelectedTaskId(nextTask.id)
-    } else {
-      const remaining = visibleTasks.filter(t => t.id !== selectedTask.id)
-      setSelectedTaskId(remaining[0]?.id || null)
     }
   }
 
-  const handleEscalateToDoctor = (task) => {
-    triggerActionAndAdvance(() => {
-      notify?.({
-        title: 'Tâche Escaladée 🩺',
-        description: `La tâche administrative de ${task.patientName} a été transmise au Médecin.`,
-        variant: 'success'
-      })
-      handleResolveTask(task.id, 'Escaladée au médecin')
-    })
-  }
-
+  // Payment Confirmation Action Handler
   const handleConfirmPayment = () => {
     if (!selectedTask) return
     setIsPaymentModalOpen(false)
 
     triggerActionAndAdvance(() => {
+      handleAdminResolve(selectedTask)
       notify?.({
-        title: 'Encaissement Réussi 💳',
-        description: `Règlement de 300 MAD enregistré pour ${selectedTask.patientName} (${paymentMethod.toUpperCase()}). Reçu envoyé par WhatsApp.`,
+        title: 'Encaissement Effectué 💳',
+        description: `Paiement enregistré pour ${selectedTask.patientName}. Reçu ${sendReceiptWhatsApp ? 'et notif WhatsApp transmis.' : 'enregistré.'}`,
         variant: 'success'
       })
-      handleResolveTask(selectedTask.id, `Encaissement effectué pour ${selectedTask.patientName}.`)
     })
   }
 
-  const handleContactPatient = () => {
-    setIsContactModalOpen(true)
-  }
-
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 h-[calc(100vh-14rem)] min-h-[620px]">
-      {/* LEFT LIST PANE (40% width / 5 cols) */}
-      <div className="lg:col-span-5 h-full rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden flex flex-col">
-        {/* Pane Header & Search */}
-        <div className="p-3.5 border-b border-slate-100 bg-slate-50/80 space-y-2.5 shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {isDoctorView ? (
-                <Stethoscope size={16} className="text-blue-600" />
-              ) : (
-                <UserCheck size={16} className="text-emerald-600" />
-              )}
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                {isDoctorView ? 'Flux Clinique Docteur' : 'Flux Administratif Secrétaire'}
-              </h3>
-            </div>
-            <span className="bg-slate-200 text-slate-800 text-[10px] font-black px-2.5 py-0.5 rounded-full">
-              {visibleTasks.length} Tâche(s)
-            </span>
+    <div className="space-y-4 relative">
+      {/* FILTER & SEARCH TOP HEADER BAR */}
+      <div className="bg-white rounded-2xl shadow-xs border border-slate-200/90 p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 font-bold flex items-center justify-center text-xs shrink-0">
+            {isDoctorView ? <Stethoscope size={18} /> : <UserCheck size={18} />}
           </div>
+          <div>
+            <h3 className="text-xs font-bold text-slate-900">
+              {isDoctorView ? 'Fil Clinique Docteur' : 'Fil Administratif Secrétariat'}
+            </h3>
+            <p className="text-[11px] text-slate-500 font-medium">
+              {isDoctorView ? 'Triage prioritaire & signatures médicales' : 'Validation des encaissements & RDV'}
+            </p>
+          </div>
+        </div>
 
-          {/* Search Box */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          {/* Search Bar */}
           <div className="relative">
-            <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher patient, description..."
-              className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 shadow-2xs"
+              placeholder="Rechercher patient..."
+              className="h-8.5 pl-8 pr-7 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 w-full sm:w-52"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
 
-          {/* 🚀 FIX 1: SINGLE HORIZONTAL LINE FILTER PILLS (NO LINE-BREAKS) */}
-          <div className="flex flex-row items-center flex-nowrap overflow-x-auto gap-2 py-1 no-scrollbar">
-            {categoriesList.map(cat => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setActiveCategory(cat.id)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap shrink-0 transition-all ${
-                  activeCategory === cat.id
-                    ? 'bg-slate-900 text-white shadow-2xs font-black'
-                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60'
-                }`}
-              >
-                {cat.label}
-              </button>
-            ))}
+          {/* SINGLE-LINE FILTER PILLS WITH TOOLTIPS */}
+          <div className="bg-slate-100/90 rounded-xl p-1 flex items-center gap-1 overflow-x-auto no-scrollbar shrink-0 border border-slate-200/60">
+            {categoriesList.map(cat => {
+              const isActive = activeCategory === cat.id
+              const count = cat.id === 'all'
+                ? searchFilteredTasks.length
+                : searchFilteredTasks.filter(t => t.category === cat.id).length
+
+              return (
+                <Tooltip key={cat.id} content={`Filtrer par ${cat.label}`}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 ${
+                      isActive
+                        ? 'bg-slate-900 text-white shadow-2xs font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    }`}
+                  >
+                    <span>{cat.label}</span>
+                    <span className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-black ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                </Tooltip>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* 2-COLUMN SPLIT MASTER-DETAIL WORKSPACE */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-16rem)] min-h-[580px]">
+        {/* LEFT TRIAGE FEED (40% width / 5 cols) */}
+        <div className="lg:col-span-5 h-full rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden flex flex-col">
+          <div className="p-3 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+              <Sparkles size={14} className="text-blue-600" />
+              <span>Dossiers à Traiter</span>
+            </span>
+            <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2.5 py-0.5 rounded-full">
+              {visibleTasks.length} Tâches
+            </span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
+            {visibleTasks.length === 0 ? (
+              <div className="py-20 text-center text-slate-400">
+                <div className="text-3xl mb-2">✨</div>
+                <p className="text-xs font-bold text-slate-700">Aucune tâche en attente</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {isDoctorView ? 'Le fil clinique est à jour.' : 'Le fil administratif est à jour.'}
+                </p>
+              </div>
+            ) : (
+              visibleTasks.map(t => {
+                const isSelected = selectedTaskId === t.id
+                const isUrgent = t.category === 'urgences' || t.isUrgent || t.status === 'CRITIQUE'
+
+                return (
+                  <ClinicalPeekPopover key={t.id} task={t} position="right-start">
+                    <div
+                      onClick={() => setSelectedTaskId(t.id)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-blue-50/90 border-blue-500 shadow-xs ring-1 ring-blue-400/40'
+                          : 'bg-white border-slate-200/80 hover:bg-slate-50/80 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1.5 mb-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {isUrgent && (
+                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" title="Urgent" />
+                          )}
+                          <h4 className="text-xs font-bold text-slate-900 truncate">{t.patientName}</h4>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-medium shrink-0">{t.metadata}</span>
+                      </div>
+
+                      <p className="text-xs text-slate-600 font-medium truncate mt-0.5 block line-clamp-1 mb-2">
+                        {t.description || t.object || t.details || 'Aucune description'}
+                      </p>
+
+                      <div className="flex items-center justify-between">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          isUrgent
+                            ? 'bg-red-50 text-red-700 border-red-200'
+                            : t.category === 'prescriptions'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : t.category === 'resultats'
+                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {t.category.toUpperCase()}
+                        </span>
+
+                        <span className="text-[11px] text-blue-600 font-bold flex items-center gap-0.5 transition-transform">
+                          <span>Consulter</span>
+                          <ChevronRight size={12} />
+                        </span>
+                      </div>
+                    </div>
+                  </ClinicalPeekPopover>
+                )
+              })
+            )}
           </div>
         </div>
 
-        {/* Task List Items Feed */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {visibleTasks.length === 0 ? (
-            <div className="py-20 text-center text-slate-400">
-              <div className="text-3xl mb-2">✨</div>
-              <p className="text-xs font-bold text-slate-700">Aucune tâche en attente</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                {isDoctorView ? 'Le fil clinique est à jour.' : 'Le fil administratif est à jour.'}
+        {/* RIGHT DETAIL PANE (60% width / 7 cols) */}
+        <div className="lg:col-span-7 h-full rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden flex flex-col">
+          {!selectedTask ? (
+            <div className="h-full flex flex-col items-center justify-center p-8 text-slate-400 text-center">
+              <div className="text-4xl mb-2">🩺</div>
+              <p className="text-sm font-bold text-slate-800">Aucune tâche sélectionnée</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Sélectionnez une tâche dans le fil de triage pour consulter les détails.
               </p>
             </div>
           ) : (
-            visibleTasks.map(t => {
-              const isSelected = selectedTaskId === t.id
-              const isUrgent = t.category === 'urgences' || t.isUrgent || t.status === 'CRITIQUE'
-
-              return (
-                <div
-                  key={t.id}
-                  onClick={() => setSelectedTaskId(t.id)}
-                  className={`group relative p-3 rounded-xl border transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-blue-50/90 border-blue-500 shadow-xs ring-1 ring-blue-400/40'
-                      : 'bg-white border-slate-200/80 hover:bg-slate-50/80 hover:border-slate-300'
-                  }`}
-                >
-                  {/* 🚀 RICH TASK PREVIEW POPOVER ON HOVER */}
-                  <div className="pointer-events-none absolute z-50 hidden group-hover:block transition-all duration-200 bottom-full mb-2 left-0 w-64 p-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700/90 text-xs space-y-1.5 backdrop-blur-md">
-                    <div className="flex items-center justify-between border-b border-slate-700/80 pb-1">
-                      <span className="font-black text-white text-xs truncate">{t.patientName}</span>
-                      <span className="bg-blue-500/20 text-blue-300 text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-blue-400/30">
-                        {t.status || 'En attente'}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1 text-[11px] text-slate-300 font-medium">
-                      <p className="leading-snug">
-                        <strong className="text-slate-100 font-bold">Objet:</strong> {t.description || t.object}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[9.5px] text-slate-400 pt-1 border-t border-slate-800 font-semibold">
-                      <span>CIN: AB-89210 • 📞 0661-234567</span>
-                      <span>🕒 {t.metadata || '10:30'}</span>
-                    </div>
+            <div className="h-full flex flex-col overflow-hidden">
+              {/* STICKY CONTEXT HEADER WITH RELEVANT ACTION BUTTONS */}
+              <div className="p-3 bg-slate-900 text-white flex items-center justify-between shrink-0 shadow-md">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                    {selectedTask.patientName?.charAt(0)}
                   </div>
-
-                  <div className="flex items-center justify-between gap-1.5 mb-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      {isUrgent && (
-                        <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" title="Urgent" />
-                      )}
-                      <h4 className="text-xs font-bold text-slate-900 truncate">{t.patientName}</h4>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-medium shrink-0">{t.metadata}</span>
-                  </div>
-
-                  {/* 🚀 FIX 2: EXPLICIT CARD DESCRIPTION RENDERING */}
-                  <p className="text-xs text-slate-600 font-medium truncate mt-0.5 block line-clamp-1 mb-2">
-                    {t.description || t.object || t.details || 'Aucune description'}
-                  </p>
-
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      isUrgent
-                        ? 'bg-red-50 text-red-700 border-red-200'
-                        : t.category === 'prescriptions'
-                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                        : t.category === 'resultats'
-                        ? 'bg-purple-50 text-purple-700 border-purple-200'
-                        : 'bg-slate-100 text-slate-700 border-slate-200'
-                    }`}>
-                      {t.category.toUpperCase()}
-                    </span>
-
-                    <span className="text-[11px] text-blue-600 font-bold flex items-center gap-0.5 transition-transform">
-                      <span>Consulter</span>
-                      <ChevronRight size={12} />
-                    </span>
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-bold text-white truncate">{selectedTask.patientName}</h4>
+                    <p className="text-[10px] text-slate-300 truncate">
+                      {selectedTask.category.toUpperCase()} • {selectedTask.metadata || 'À traiter'}
+                    </p>
                   </div>
                 </div>
-              )
-            })
+
+                {/* 🚀 RELEVANT & NON-REDUNDANT ACTION BUTTONS PER TASK CATEGORY */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Facturation / Impayé -> Encaisser Button */}
+                  {selectedTask.category === 'facturation' && (
+                    <Tooltip position="top-end" content="Ouvrir le formulaire d'encaissement et émettre la facture">
+                      <button
+                        type="button"
+                        onClick={() => setIsPaymentModalOpen(true)}
+                        className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-extrabold shadow-2xs transition-all flex items-center gap-1.5"
+                      >
+                        <CreditCard size={14} />
+                        <span>[ Encaisser 150 MAD ]</span>
+                      </button>
+                    </Tooltip>
+                  )}
+
+                  {/* Resultats Labo -> Valider & Transmettre Button */}
+                  {selectedTask.category === 'resultats' && (
+                    <Tooltip position="top-end" content="Valider le bilan et envoyer le compte-rendu au patient via WhatsApp">
+                      <button
+                        type="button"
+                        onClick={() => triggerActionAndAdvance(() => handleApproveAndSend(selectedTask, 'Bilan validé.'))}
+                        disabled={isProcessing}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold shadow-2xs transition-all flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Send size={14} />
+                        <span>[ Valider & Transmettre ]</span>
+                      </button>
+                    </Tooltip>
+                  )}
+
+                  {/* Prescriptions -> Signer & Transmettre Button */}
+                  {selectedTask.category === 'prescriptions' && (
+                    <Tooltip position="top-end" content="Signer numériquement l'ordonnance et l'envoyer au smartphone du patient">
+                      <button
+                        type="button"
+                        onClick={() => triggerActionAndAdvance(() => handleSignNextPrescription(selectedTask))}
+                        disabled={isProcessing}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-2xs transition-all flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Pill size={14} />
+                        <span>[ Signer & Transmettre ]</span>
+                      </button>
+                    </Tooltip>
+                  )}
+
+                  {/* Inter-Role Handoff Buttons */}
+                  {!isDoctorView ? (
+                    <Tooltip position="top-end" content="Transférer le fil médical au bureau du médecin">
+                      <button
+                        type="button"
+                        onClick={() => triggerActionAndAdvance(() => {
+                          handleResolveTask(selectedTask.id, `Tâche transférée au Docteur.`)
+                        })}
+                        className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-extrabold shadow-2xs transition-all flex items-center gap-1"
+                      >
+                        <ArrowUpRight size={14} />
+                        <span>Escalader au Médecin</span>
+                      </button>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip position="top-end" content="Renvoyer l'instruction au secrétariat pour RDV ou caisse">
+                      <button
+                        type="button"
+                        onClick={() => triggerActionAndAdvance(() => {
+                          handleResolveTask(selectedTask.id, `Renvoyé au Secrétariat pour suivi.`)
+                        })}
+                        className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-xl text-xs font-extrabold shadow-2xs transition-all flex items-center gap-1"
+                      >
+                        <span>↩️ Renvoyer Secrétariat</span>
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
+              </div>
+
+              {/* ACTIVE VIEWER COMPONENT */}
+              <div className="flex-1 overflow-y-auto">
+                {selectedTask.category === 'resultats' && (
+                  <LabResultViewer
+                    task={selectedTask}
+                    onApproveAndSend={handleApproveAndSend}
+                    onArchive={handleArchive}
+                    isProcessing={isProcessing}
+                  />
+                )}
+
+                {selectedTask.category === 'prescriptions' && (
+                  <PrescriptionViewer
+                    task={selectedTask}
+                    onSignNext={handleSignNextPrescription}
+                    onEdit={() => {}}
+                    isBatchMode={false}
+                    batchRemainingCount={1}
+                    isProcessing={isProcessing}
+                  />
+                )}
+
+                {selectedTask.category === 'messages' && (
+                  <PatientMessageViewer
+                    task={selectedTask}
+                    onSendReply={handleSendReply}
+                    isProcessing={isProcessing}
+                  />
+                )}
+
+                {(selectedTask.category === 'urgences' || selectedTask.category === 'facturation' || selectedTask.category === 'confirmations' || selectedTask.category === 'cnss') && (
+                  <AdminTaskViewer
+                    task={selectedTask}
+                    onResolve={handleAdminResolve}
+                    onContact={() => setIsContactModalOpen(true)}
+                    isProcessing={isProcessing}
+                  />
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>
 
-      {/* RIGHT DETAIL PANE (60% width / 7 cols) */}
-      <div className="lg:col-span-7 h-full rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden flex flex-col">
-        {!selectedTask ? (
-          <div className="h-full flex flex-col items-center justify-center p-8 text-slate-400 text-center">
-            <div className="text-4xl mb-2">🩺</div>
-            <p className="text-sm font-bold text-slate-800">Aucune tâche sélectionnée</p>
-            <p className="text-xs text-slate-400 mt-1">
-              Sélectionnez une tâche dans le fil de triage pour consulter les détails.
-            </p>
-          </div>
-        ) : (
-          <div className="h-full flex flex-col overflow-hidden">
-            {/* Header Details Bar */}
-            <div className="p-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between shrink-0">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-black text-slate-900">{selectedTask.patientName}</h3>
-                  <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-blue-200">
-                    {selectedTask.category.toUpperCase()}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">{selectedTask.description}</p>
-              </div>
-
-              <div className="text-right">
-                <span className="text-[11px] text-slate-400 font-medium block">{selectedTask.metadata}</span>
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  {selectedTask.status || 'En attente'}
-                </span>
-              </div>
-            </div>
-
-            {/* Task Content Viewer */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {selectedTask.category === 'resultats' && (
-                <LabResultViewer
-                  task={selectedTask}
-                  onApproveAndSend={() => triggerActionAndAdvance(() => handleResolveTask(selectedTask.id))}
-                  onArchive={() => triggerActionAndAdvance(() => handleArchive(selectedTask))}
-                  isProcessing={isProcessing}
-                />
-              )}
-
-              {selectedTask.category === 'prescriptions' && (
-                <PrescriptionViewer
-                  task={selectedTask}
-                  onSignNext={() => triggerActionAndAdvance(() => handleSignNextPrescription(selectedTask))}
-                  onEdit={() => {}}
-                  isBatchMode={false}
-                  batchRemainingCount={1}
-                  isProcessing={isProcessing}
-                />
-              )}
-
-              {selectedTask.category === 'messages' && (
-                <PatientMessageViewer
-                  task={selectedTask}
-                  onSendReply={(replyText) => triggerActionAndAdvance(() => handleSendReply(selectedTask, replyText))}
-                  isProcessing={isProcessing}
-                />
-              )}
-
-              {(selectedTask.category === 'urgences' ||
-                selectedTask.category === 'facturation' ||
-                selectedTask.category === 'confirmations' ||
-                selectedTask.category === 'cnss') && (
-                <AdminTaskViewer
-                  task={selectedTask}
-                />
-              )}
-
-              {/* AI Recommendation Box */}
-              <div className="p-3.5 bg-gradient-to-br from-indigo-50/80 via-blue-50/50 to-slate-50 rounded-xl border border-indigo-200/80 shadow-2xs space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <Sparkles size={16} className="text-amber-500" />
-                  <h4 className="text-xs font-black uppercase tracking-wider text-indigo-950">
-                    Recommandation IA (Gemini 2.5 Flash)
-                  </h4>
-                </div>
-                <p className="text-xs text-indigo-900/90 font-medium leading-relaxed">
-                  {selectedTask.category === 'facturation'
-                    ? 'Règlement en attente. Cliquer sur "Encaisser le règlement" pour ouvrir le sous-module d\'encaissement rapide et valider la facture.'
-                    : selectedTask.category === 'cnss'
-                    ? 'Dossier CNSS/CNOPS prêt pour télétransmission. Cliquer sur "Valider & Transmettre" pour archiver.'
-                    : selectedTask.category === 'confirmations'
-                    ? 'Le patient attend la confirmation de son RDV. Transmettre la validation et notifier par SMS/WhatsApp.'
-                    : selectedTask.category === 'urgences'
-                    ? 'Tension critique (185/110 mmHg). Transmettre en priorité au médecin et planifier un ECG.'
-                    : 'Dossier médical vérifié par le système. Cliquez sur le bouton principal pour traiter et clôturer.'}
-                </p>
-              </div>
-            </div>
-
-            {/* CONSOLIDATED ACTION BAR (CONTEXT-AWARE PRIMARY + SECONDARY HELPERS) */}
-            <div className="p-3.5 border-t border-slate-200 bg-slate-50/90 shrink-0 flex items-center justify-between gap-2.5 flex-wrap">
-              {/* SECONDARY HELPER ACTIONS */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* 1. Contacter le patient */}
-                <Tooltip position="top-start" content="Appeler ou envoyer un message WhatsApp au patient">
-                  <button
-                    type="button"
-                    onClick={handleContactPatient}
-                    className="h-9 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-2xs hover:-translate-y-0.5 active:scale-95"
-                  >
-                    <Phone size={14} className="text-blue-600" />
-                    <span>📞 Contacter</span>
-                  </button>
-                </Tooltip>
-
-                {/* 2. Escalader au Médecin (Secretary View Only) */}
-                {!isDoctorView && (
-                  <Tooltip position="top-start" content="Transmettre ce dossier au médecin avec priorité haute">
-                    <button
-                      type="button"
-                      onClick={() => handleEscalateToDoctor(selectedTask)}
-                      className="h-9 px-3 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-2xs hover:-translate-y-0.5 active:scale-95"
-                    >
-                      <ArrowUpRight size={14} className="text-amber-600" />
-                      <span>↗️ Escalader au Médecin</span>
-                    </button>
-                  </Tooltip>
-                )}
-
-                {/* 3. Archiver (Silent Archive) */}
-                <Tooltip position="top-start" content="Archiver silencieusement la tâche au dossier">
-                  <button
-                    type="button"
-                    onClick={() => triggerActionAndAdvance(() => handleArchive(selectedTask))}
-                    className="h-9 px-3 bg-white border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-2xs hover:-translate-y-0.5 active:scale-95"
-                  >
-                    <Archive size={14} className="text-slate-500" />
-                    <span>📁 Archiver</span>
-                  </button>
-                </Tooltip>
-              </div>
-
-              {/* CONTEXT-AWARE PRIMARY ACTION BUTTON */}
-              <div className="ml-auto shrink-0">
-                {(selectedTask.category === 'facturation' || selectedTask.category === 'impaye') && (
-                  <button
-                    type="button"
-                    onClick={() => setIsPaymentModalOpen(true)}
-                    disabled={isProcessing}
-                    className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs shadow-md shadow-emerald-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
-                  >
-                    <CreditCard size={16} />
-                    <span>💳 Encaisser le règlement</span>
-                  </button>
-                )}
-
-                {(selectedTask.category === 'cnss' || selectedTask.category === 'dossier') && (
-                  <button
-                    type="button"
-                    onClick={() => triggerActionAndAdvance(() => handleResolveTask(selectedTask.id, `Dossier CNSS de ${selectedTask.patientName} transmis.`))}
-                    disabled={isProcessing}
-                    className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs shadow-md shadow-emerald-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
-                  >
-                    <FileCheck size={16} />
-                    <span>✅ Valider & Transmettre</span>
-                  </button>
-                )}
-
-                {(selectedTask.category === 'confirmations' || (selectedTask.category === 'messages' && !isDoctorView)) && (
-                  <button
-                    type="button"
-                    onClick={() => triggerActionAndAdvance(() => handleResolveTask(selectedTask.id, `RDV/Message confirmé pour ${selectedTask.patientName}.`))}
-                    disabled={isProcessing}
-                    className="h-10 px-5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
-                  >
-                    <Send size={15} />
-                    <span>💬 Répondre / Confirmer RDV</span>
-                  </button>
-                )}
-
-                {selectedTask.category === 'prescriptions' && (
-                  <button
-                    type="button"
-                    onClick={() => triggerActionAndAdvance(() => handleSignNextPrescription(selectedTask))}
-                    disabled={isProcessing}
-                    className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs shadow-md shadow-emerald-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
-                  >
-                    <CheckCircle2 size={16} />
-                    <span>⚡ Valider & Signer l'ordonnance</span>
-                  </button>
-                )}
-
-                {selectedTask.category === 'resultats' && (
-                  <button
-                    type="button"
-                    onClick={() => triggerActionAndAdvance(() => handleResolveTask(selectedTask.id, `Bilan/Résultat de ${selectedTask.patientName} approuvé.`))}
-                    disabled={isProcessing}
-                    className="h-10 px-5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-black text-xs shadow-md shadow-purple-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
-                  >
-                    <CheckCircle2 size={16} />
-                    <span>🔬 Valider le compte-rendu</span>
-                  </button>
-                )}
-
-                {selectedTask.category === 'urgences' && (
-                  <button
-                    type="button"
-                    onClick={() => triggerActionAndAdvance(() => handleResolveTask(selectedTask.id, `Urgence médicale de ${selectedTask.patientName} prise en charge.`))}
-                    disabled={isProcessing}
-                    className="h-10 px-5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs shadow-md shadow-red-500/20 transition-all flex items-center gap-2 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
-                  >
-                    <AlertCircle size={16} />
-                    <span>🚨 Traiter l'urgence</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* PAYMENT COLLECTION MODAL */}
+      {/* ENCAISSEMENT PAYMENT MODAL */}
       {isPaymentModalOpen && selectedTask && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 border border-slate-100 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-md w-full border border-slate-200 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                  <CreditCard size={18} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-900">Encaissement du Règlement</h3>
-                  <p className="text-[11px] text-slate-400 font-medium">Facturation & Secrétariat</p>
-                </div>
+                <CreditCard className="text-emerald-600" size={20} />
+                <h3 className="text-sm font-bold text-slate-900">Encaissement & Règlement</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsPaymentModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+                className="text-slate-400 hover:text-slate-600 p-1"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
 
-            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-4 space-y-2">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500 font-semibold">Patient:</span>
-                <span className="font-extrabold text-slate-900 text-sm">{selectedTask.patientName}</span>
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-xs space-y-1">
+              <div className="flex justify-between font-bold text-slate-900">
+                <span>Patient:</span>
+                <span>{selectedTask.patientName}</span>
               </div>
-              <div className="flex justify-between items-center text-xs border-t border-emerald-200/60 pt-2">
-                <span className="text-slate-500 font-semibold">Montant à encaisser:</span>
-                <span className="font-black text-emerald-700 text-base">300 MAD</span>
+              <div className="flex justify-between text-slate-600">
+                <span>Acte / Honoraires:</span>
+                <span>Consultation Médicale</span>
+              </div>
+              <div className="flex justify-between font-black text-emerald-700 pt-1 border-t border-slate-200 text-sm">
+                <span>Montant à Encaisser:</span>
+                <span>150 MAD</span>
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-700 block">Mode de paiement</label>
+              <label className="text-xs font-bold text-slate-700 block">Mode de Paiement:</label>
               <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('cash')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                    paymentMethod === 'cash'
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-400/30'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  💵 Espèces
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('tpe')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                    paymentMethod === 'tpe'
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-400/30'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  💳 TPE / Carte
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('virement')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                    paymentMethod === 'virement'
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-400/30'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  🏦 Virement
-                </button>
+                {['cash', 'card', 'check'].map(method => (
+                  <button
+                    key={method}
+                    type="button"
+                    onClick={() => setPaymentMethod(method)}
+                    className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                      paymentMethod === method
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-900 shadow-2xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {method === 'cash' ? 'Espèces' : method === 'card' ? 'Carte TPE' : 'Chèque'}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <label className="flex items-center gap-2 cursor-pointer pt-1">
+            <div className="flex items-center gap-2 pt-1">
               <input
                 type="checkbox"
+                id="receiptCheck"
                 checked={sendReceiptWhatsApp}
                 onChange={(e) => setSendReceiptWhatsApp(e.target.checked)}
-                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+                className="rounded text-emerald-600 focus:ring-emerald-500"
               />
-              <span className="text-xs text-slate-700 font-semibold">
-                Envoyer le reçu électronique par WhatsApp au patient
-              </span>
-            </label>
+              <label htmlFor="receiptCheck" className="text-xs font-medium text-slate-700">
+                Transmettre le reçu de paiement par WhatsApp
+              </label>
+            </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsPaymentModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
               >
                 Annuler
               </button>
               <button
                 type="button"
                 onClick={handleConfirmPayment}
-                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md flex items-center gap-1.5 transition-all"
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold shadow-md transition-all flex items-center justify-center gap-1.5"
               >
-                <CheckCircle2 size={16} />
-                <span>Confirmer l'Encaissement</span>
+                <CheckCircle2 size={15} />
+                <span>Valider Encaissement</span>
               </button>
             </div>
           </div>
@@ -605,40 +511,55 @@ export default function GatekeeperStandardView({
 
       {/* PATIENT CONTACT MODAL */}
       {isContactModalOpen && selectedTask && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4 border border-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h3 className="text-xs font-black text-slate-900">📞 Contacter {selectedTask.patientName}</h3>
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-md w-full border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Phone className="text-blue-600" size={18} />
+                <h3 className="text-sm font-bold text-slate-900">Contacter {selectedTask.patientName}</h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsContactModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 p-1"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => {
-                  window.open(`https://wa.me/212600000000?text=Bonjour%20${encodeURIComponent(selectedTask.patientName)},%20concernant%20votre%20dossier%20médical...`, '_blank')
-                  setIsContactModalOpen(false)
-                }}
-                className="w-full py-2.5 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+            <div className="space-y-2.5 text-xs">
+              <a
+                href={`tel:0661234567`}
+                className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 flex items-center justify-between transition-all font-bold text-slate-800"
               >
-                💬 Envoyer un Message WhatsApp
-              </button>
+                <span>Appeler Directement (06 61 23 45 67)</span>
+                <Phone size={15} className="text-blue-600" />
+              </a>
 
               <button
                 type="button"
                 onClick={() => {
-                  window.open('tel:+212600000000')
                   setIsContactModalOpen(false)
+                  notify?.({
+                    title: 'WhatsApp Ouvert 💬',
+                    description: `Canal WhatsApp prêt pour ${selectedTask.patientName}.`,
+                    variant: 'info'
+                  })
                 }}
-                className="w-full py-2.5 px-4 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-900 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                className="w-full p-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 flex items-center justify-between transition-all font-bold text-emerald-900"
               >
-                📞 Appeler sur le Téléphone
+                <span>Envoyer un Message WhatsApp</span>
+                <MessageSquare size={15} className="text-emerald-600" />
+              </button>
+            </div>
+
+            <div className="pt-2 text-right">
+              <button
+                type="button"
+                onClick={() => setIsContactModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold"
+              >
+                Fermer
               </button>
             </div>
           </div>
