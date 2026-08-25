@@ -43,18 +43,39 @@ export async function fillFeuilleDeSoins(data) {
     }
   }
 
+  const drawSmartText = (page, text, fontToUse, startX, startY, defaultSize, maxWidth) => {
+    if (!text) return;
+    
+    let currentSize = defaultSize;
+    let textWidth = fontToUse.widthOfTextAtSize(String(text), currentSize);
+
+    // Shrink font size incrementally if it's wider than the box
+    while (textWidth > maxWidth && currentSize > 4) {
+      currentSize -= 0.5;
+      textWidth = fontToUse.widthOfTextAtSize(String(text), currentSize);
+    }
+
+    page.drawText(String(text), {
+      x: startX,
+      y: startY,
+      size: currentSize,
+      font: fontToUse,
+      color: textColor
+    });
+  };
+
   // ==========================================
   // PAGE 1: ASSURÉ (Top Section)
   // ==========================================
-  drawText(page1, data.assure?.nomPrenom, 345, 692, 9);
+  drawSmartText(page1, data.assure?.nomPrenom, fontBold, 345, 692, 9, 150);
   drawBoxes(page1, data.assure?.immatriculation, 368, 672, 12.8, 8.5);
   drawBoxes(page1, data.assure?.cin, 378, 652, 13.0, 8.5);
-  drawText(page1, data.assure?.adresse, 335, 612, 8);
+  drawSmartText(page1, data.assure?.adresse, fontBold, 335, 612, 8, 220);
   drawText(page1, `${data.assure?.montantTotal || '150.00'} DH`, 365, 590, 8.5);
   drawText(page1, data.assure?.nombrePieces || '1', 345, 570, 8.5);
 
   // --- PAGE 1: BÉNÉFICIAIRE (Middle Section) ---
-  drawText(page1, data.beneficiaire?.nomPrenom, 345, 528, 9);
+  drawSmartText(page1, data.beneficiaire?.nomPrenom, fontBold, 345, 528, 9, 150);
   // Clean date to 8 digits without slashes (e.g. "14051998")
   const cleanDate = (data.beneficiaire?.dateNaissance || '').replace(/[^0-9]/g, '');
   drawBoxes(page1, cleanDate, 346, 508, 13.0, 8.5);
