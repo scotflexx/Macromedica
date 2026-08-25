@@ -16,6 +16,7 @@ import {
   subscribeClinicVisits,
 } from '../../lib/visitService'
 import InvoiceFormModal from '../../components/forms/InvoiceFormModal'
+import CnssPdfGenerator from '../../components/cnss/CnssPdfGenerator'
 
 const fmtMAD = (n) => (n || 0).toLocaleString('fr-FR') + ' MAD'
 
@@ -86,6 +87,7 @@ export default function BillingPage() {
   const [paymentMethods, setPaymentMethods] = useState({})
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false)
   const [isAdvancedDetailsOpen, setIsAdvancedDetailsOpen] = useState(false)
+  const [showCnssGenerator, setShowCnssGenerator] = useState(false)
 
   // — Confirmation Payment Modal State —
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -722,6 +724,20 @@ export default function BillingPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* CNSS PDF Generator Button */}
+            <button
+              type="button"
+              onClick={() => setShowCnssGenerator(!showCnssGenerator)}
+              className={`h-10 px-4 rounded-xl font-semibold transition-all duration-200 hover:-translate-y-0.5 active:scale-95 shadow-sm text-xs flex items-center gap-2 border ${
+                showCnssGenerator
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-emerald-500/20'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <FileText size={15} className={showCnssGenerator ? 'text-white' : 'text-emerald-600'} />
+              <span>Générateur CNSS (FSE)</span>
+            </button>
+
             {/* Détails Avancés Button */}
             <button
               type="button"
@@ -743,6 +759,17 @@ export default function BillingPage() {
             </button>
           </div>
         </motion.div>
+
+        {/* CNSS Feuille de Soins PDF Generator Component */}
+        {showCnssGenerator && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+          >
+            <CnssPdfGenerator />
+          </motion.div>
+        )}
 
         {/* Sleek Unpaid Invoices Banner */}
         {stats.pendingCount > 0 && (
