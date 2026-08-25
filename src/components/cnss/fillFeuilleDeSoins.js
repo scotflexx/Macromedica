@@ -2,7 +2,7 @@ import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib'
 import QRCode from 'qrcode'
 
 export async function fillFeuilleDeSoins(data) {
-  // 1. Fetch template
+  // 1. Fetch template built from exact official images
   const existingPdfBytes = await fetch('/assets/FEUILLE-DE-SOINS-MALADIE.pdf').then((res) => {
     if (!res.ok) throw new Error('Could not find /assets/FEUILLE-DE-SOINS-MALADIE.pdf')
     return res.arrayBuffer()
@@ -17,13 +17,12 @@ export async function fillFeuilleDeSoins(data) {
   const page2 = pages[1]
 
   const pageRotation = page1.getRotation().angle
-  const textColor = rgb(0.1, 0.1, 0.2)
+  const textColor = rgb(0.05, 0.2, 0.6) // Crisp medical blue font
 
-  // Helper to draw text matching the visual orientation without setRotation()
+  // Helper to draw text matching visual orientation
   const drawVisualText = (page, text, x, y, size = 9, isBold = true) => {
     if (!text) return
 
-    // If page is rotated 90 degrees internally
     if (pageRotation === 90) {
       page.drawText(String(text), {
         x: y,
@@ -107,31 +106,12 @@ export async function fillFeuilleDeSoins(data) {
 
     const qrDataUrl = await QRCode.toDataURL(qrPayload, { margin: 1, width: 120 })
     const qrImage = await pdfDoc.embedPng(qrDataUrl)
-
-    if (pageRotation === 270) {
-      page1.drawImage(qrImage, {
-        x: page1.getHeight() - 730,
-        y: 485,
-        width: 65,
-        height: 65,
-        rotate: degrees(90),
-      })
-    } else if (pageRotation === 90) {
-      page1.drawImage(qrImage, {
-        x: 730,
-        y: page1.getWidth() - 485,
-        width: 65,
-        height: 65,
-        rotate: degrees(-90),
-      })
-    } else {
-      page1.drawImage(qrImage, {
-        x: 485,
-        y: 730,
-        width: 65,
-        height: 65,
-      })
-    }
+    page1.drawImage(qrImage, {
+      x: 485,
+      y: 730,
+      width: 65,
+      height: 65,
+    })
   } catch (e) {
     console.warn('QR Code generation skipped:', e)
   }
