@@ -44,35 +44,36 @@ export async function fillFeuilleDeSoins(data) {
   }
 
   // ==========================================
-  // PAGE 1: DONNÉES PATIENT & MÉDECIN
+  // PAGE 1: ASSURÉ (Top Section)
   // ==========================================
-  // Partie réservée à l'assuré(e)
-  drawText(page1, data.assure?.nomPrenom, 350, 680, 9)
-  drawBoxes(page1, data.assure?.immatriculation, 372, 655, 14)
-  drawBoxes(page1, data.assure?.cin, 382, 635, 14)
-  drawText(page1, data.assure?.adresse, 335, 600, 8, false)
-  drawText(page1, `${data.assure?.montantTotal || '150.00'} DH`, 365, 580, 9)
-  drawText(page1, data.assure?.nombrePieces || '1', 345, 560, 9)
+  drawText(page1, data.assure?.nomPrenom, 345, 692, 9);
+  drawBoxes(page1, data.assure?.immatriculation, 368, 672, 12.8, 8.5);
+  drawBoxes(page1, data.assure?.cin, 378, 652, 13.0, 8.5);
+  drawText(page1, data.assure?.adresse, 335, 612, 8);
+  drawText(page1, `${data.assure?.montantTotal || '150.00'} DH`, 365, 590, 8.5);
+  drawText(page1, data.assure?.nombrePieces || '1', 345, 570, 8.5);
 
-  // Bénéficiaire de soins
-  drawText(page1, data.beneficiaire?.nomPrenom, 350, 498, 9)
-  drawBoxes(page1, data.beneficiaire?.dateNaissance, 360, 473, 14)
-  drawBoxes(page1, data.beneficiaire?.cin, 385, 453, 14.5)
+  // --- PAGE 1: BÉNÉFICIAIRE (Middle Section) ---
+  drawText(page1, data.beneficiaire?.nomPrenom, 345, 528, 9);
+  // Clean date to 8 digits without slashes (e.g. "14051998")
+  const cleanDate = (data.beneficiaire?.dateNaissance || '').replace(/[^0-9]/g, '');
+  drawBoxes(page1, cleanDate, 346, 508, 13.0, 8.5);
+  drawBoxes(page1, data.beneficiaire?.cin, 378, 488, 13.0, 8.5);
 
-  // Cocher Sexe (M / F)
+  // Checkboxes (Sexe)
   if (data.beneficiaire?.sexe === 'M') {
-    drawText(page1, 'X', 442, 438, 10)
+    drawText(page1, 'X', 496, 468, 9);
   } else {
-    drawText(page1, 'X', 482, 438, 10)
+    drawText(page1, 'X', 440, 468, 9);
   }
 
-  // Cocher Type de soins (Maladie)
-  drawText(page1, 'X', 512, 365, 10)
+  // Checkbox (Type de soins -> Maladie)
+  drawText(page1, 'X', 512, 368, 9);
 
-  // INPE & Doctor details
-  drawBoxes(page1, data.consultation?.inpe, 340, 413, 13)
-  drawText(page1, data.consultation?.ville, 425, 325, 8, false)
-  drawText(page1, data.consultation?.date, 345, 325, 8, false)
+  // Praticien & INPE
+  drawBoxes(page1, data.consultation?.inpe, 368, 448, 12.8, 8.5);
+  drawText(page1, data.consultation?.ville, 435, 340, 8);
+  drawText(page1, data.consultation?.date, 355, 340, 8);
 
   // Embed FSE QR Code in Top Right Corner
   try {
@@ -97,18 +98,18 @@ export async function fillFeuilleDeSoins(data) {
   }
 
   // ==========================================
-  // PAGE 2: DESCRIPTION DES ACTES EFFECTUÉS
+  // PAGE 2: ACTES MÉDICAUX (Table)
   // ==========================================
   if (page2 && data.actes && data.actes.length > 0) {
-    let actY = 700
+    let actY = 658;
     data.actes.forEach((acte) => {
-      drawText(page2, acte.date, 35, actY, 8, false)
-      drawText(page2, acte.code, 120, actY, 8, true)
-      drawText(page2, acte.cotation, 180, actY, 8, true)
-      drawText(page2, `${acte.montant} DH`, 245, actY, 8, true)
-      drawText(page2, `INPE: ${acte.inpe}`, 340, actY, 7, false)
-      actY -= 35
-    })
+      drawText(page2, acte.date, 52, actY, 8);
+      drawText(page2, acte.code, 128, actY, 8);
+      drawText(page2, acte.cotation, 188, actY, 8);
+      drawText(page2, `${acte.montant} DH`, 252, actY, 8);
+      drawText(page2, `INPE: ${acte.inpe}`, 355, actY, 7.5);
+      actY -= 20;
+    });
   }
 
   return await pdfDoc.save()
