@@ -1,102 +1,126 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import QRCode from 'qrcode'
 
+const DEBUG_MODE = true
+
+// The Master Bounding Box Map
+const CNSS_MAP = {
+  assureNom: { x: 345, y: 685, w: 150, h: 12, size: 9, type: 'text' },
+  assureImmat: { x: 368, y: 668, w: 160, h: 12, size: 9, type: 'boxes', spacing: 12.8 },
+  assureCin: { x: 378, y: 648, w: 110, h: 12, size: 9, type: 'boxes', spacing: 13.0 },
+  assureAdresse: { x: 335, y: 605, w: 200, h: 12, size: 8, type: 'text' },
+  assureMontant: { x: 365, y: 585, w: 100, h: 12, size: 9, type: 'text' },
+  assurePieces: { x: 345, y: 565, w: 50, h: 12, size: 9, type: 'text' },
+
+  benefNom: { x: 345, y: 522, w: 150, h: 12, size: 9, type: 'text' },
+  benefDate: { x: 346, y: 502, w: 120, h: 12, size: 9, type: 'boxes', spacing: 13.0 },
+  benefCin: { x: 378, y: 482, w: 110, h: 12, size: 9, type: 'boxes', spacing: 13.0 },
+
+  praticienInpe: { x: 368, y: 442, w: 160, h: 12, size: 9, type: 'boxes', spacing: 12.8 },
+  consultVille: { x: 435, y: 340, w: 100, h: 12, size: 8, type: 'text' },
+  consultDate: { x: 355, y: 340, w: 80, h: 12, size: 8, type: 'text' },
+}
+
 export async function fillFeuilleDeSoins(data) {
-  // 1. Create a brand new PDF document
   const pdfDoc = await PDFDocument.create()
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
   const textColor = rgb(0.1, 0.1, 0.2)
+  const debugColor = rgb(1, 0, 0) // Red for bounding boxes
 
-  // 2. Fetch and embed the flat background images
+  // Load backgrounds
   const page1ImageBytes = await fetch('/assets/cnss-page1.jpg').then(res => res.arrayBuffer())
-  const page2ImageBytes = await fetch('/assets/cnss-page2.jpg').then(res => res.arrayBuffer())
+  let page2ImageBytes = null
+  try {
+    page2ImageBytes = await fetch('/assets/cnss-page2.jpg').then(res => res.arrayBuffer())
+  } catch (e) {
+    console.warn('Page 2 background skipped:', e)
+  }
 
   const bg1 = await pdfDoc.embedJpg(page1ImageBytes)
-  const bg2 = await pdfDoc.embedJpg(page2ImageBytes)
-
-  // 3. Create pristine A4 pages ([595.28, 841.89])
   const page1 = pdfDoc.addPage([595.28, 841.89])
-  const page2 = pdfDoc.addPage([595.28, 841.89])
-
-  // 4. Draw the backgrounds
   page1.drawImage(bg1, { x: 0, y: 0, width: 595.28, height: 841.89 })
-  page2.drawImage(bg2, { x: 0, y: 0, width: 595.28, height: 841.89 })
 
-  // 5. Draw text with absolute confidence (No rotation logic needed)
-  const drawText = (page, text, x, y, size = 9, isBold = true) => {
-    if (!text) return
-    page.drawText(String(text), {
-      x,
-      y,
-      size,
-      font: isBold ? fontBold : fontRegular,
-      color: textColor
-    })
+  let page2 = null
+  if (page2ImageBytes) {
+    const bg2 = await pdfDoc.embedJpg(page2ImageBytes)
+    page2 = pdfDoc.addPage([595.28, 841.89])
+    page2.drawImage(bg2, { x: 0, y: 0, width: 595.28, height: 841.89 })
   }
 
-  const drawBoxes = (page, text, startX, y, spacing = 13.5, size = 9) => {
-    if (!text) return
-    const clean = String(text).replace(/[^a-zA-Z0-9]/g, '')
-    for (let i = 0; i < clean.length; i++) {
-      drawText(page, clean[i], startX + (i * spacing), y, size, true)
+  // Engine: Renders data based on the Master Map
+  const renderField = (fieldKey, value, targetPage = page1) => {
+    if (!value) return
+    const box = CNSS_MAP[fieldKey]
+    if (!box) return
+
+    // Draw Debug Box if DEBUG_MODE is active
+    if (DEBUG_MODE) {
+      targetPage.drawRectangle({
+        x: box.x,
+        y: box.y,
+        width: box.w,
+        height: box.h,
+        borderColor: debugColor,
+        borderWidth: 0.5
+      })
+    }
+
+    if (box.type === 'text') {
+      let currentSize = box.size
+      let textWidth = fontBold.widthOfTextAtSize(String(value), currentSize)
+      while (textWidth > box.w && currentSize > 4) {
+        currentSize -= 0.5
+        textWidth = fontBold.widthOfTextAtSize(String(value), currentSize)
+      }
+      targetPage.drawText(String(value), {
+        x: box.x,
+        y: box.y + 2,
+        size: currentSize,
+        font: fontBold,
+        color: textColor
+      })
+    } else if (box.type === 'boxes') {
+      const clean = String(value).replace(/[^a-zA-Z0-9]/g, '')
+      for (let i = 0; i < clean.length; i++) {
+        targetPage.drawText(clean[i], {
+          x: box.x + (i * (box.spacing || 13.0)),
+          y: box.y + 2,
+          size: box.size,
+          font: fontBold,
+          color: textColor
+        })
+      }
     }
   }
 
-  const drawSmartText = (page, text, fontToUse, startX, startY, defaultSize, maxWidth) => {
-    if (!text) return;
-    
-    let currentSize = defaultSize;
-    let textWidth = fontToUse.widthOfTextAtSize(String(text), currentSize);
+  // Execute Master Map Rendering
+  renderField('assureNom', data.assure?.nomPrenom)
+  renderField('assureImmat', data.assure?.immatriculation)
+  renderField('assureCin', data.assure?.cin)
+  renderField('assureAdresse', data.assure?.adresse)
+  renderField('assureMontant', `${data.assure?.montantTotal || '150.00'} DH`)
+  renderField('assurePieces', data.assure?.nombrePieces || '1')
 
-    // Shrink font size incrementally if it's wider than the box
-    while (textWidth > maxWidth && currentSize > 4) {
-      currentSize -= 0.5;
-      textWidth = fontToUse.widthOfTextAtSize(String(text), currentSize);
-    }
-
-    page.drawText(String(text), {
-      x: startX,
-      y: startY,
-      size: currentSize,
-      font: fontToUse,
-      color: textColor
-    });
-  };
-
-  // ==========================================
-  // PAGE 1: ASSURÉ (Top Section)
-  // ==========================================
-  drawSmartText(page1, data.assure?.nomPrenom, fontBold, 345, 692, 9, 150);
-  drawBoxes(page1, data.assure?.immatriculation, 368, 672, 12.8, 8.5);
-  drawBoxes(page1, data.assure?.cin, 378, 652, 13.0, 8.5);
-  drawSmartText(page1, data.assure?.adresse, fontBold, 335, 612, 8, 220);
-  drawText(page1, `${data.assure?.montantTotal || '150.00'} DH`, 365, 590, 8.5);
-  drawText(page1, data.assure?.nombrePieces || '1', 345, 570, 8.5);
-
-  // --- PAGE 1: BÉNÉFICIAIRE (Middle Section) ---
-  drawSmartText(page1, data.beneficiaire?.nomPrenom, fontBold, 345, 528, 9, 150);
-  // Clean date to 8 digits without slashes (e.g. "14051998")
-  const cleanDate = (data.beneficiaire?.dateNaissance || '').replace(/[^0-9]/g, '');
-  drawBoxes(page1, cleanDate, 346, 508, 13.0, 8.5);
-  drawBoxes(page1, data.beneficiaire?.cin, 378, 488, 13.0, 8.5);
+  renderField('benefNom', data.beneficiaire?.nomPrenom)
+  const cleanDate = (data.beneficiaire?.dateNaissance || '').replace(/[^0-9]/g, '')
+  renderField('benefDate', cleanDate)
+  renderField('benefCin', data.beneficiaire?.cin)
+  renderField('praticienInpe', data.consultation?.inpe)
+  renderField('consultVille', data.consultation?.ville)
+  renderField('consultDate', data.consultation?.date)
 
   // Checkboxes (Sexe)
   if (data.beneficiaire?.sexe === 'M') {
-    drawText(page1, 'X', 496, 468, 9);
+    page1.drawText('X', { x: 496, y: 468, size: 9, font: fontBold, color: textColor })
   } else {
-    drawText(page1, 'X', 440, 468, 9);
+    page1.drawText('X', { x: 440, y: 468, size: 9, font: fontBold, color: textColor })
   }
 
   // Checkbox (Type de soins -> Maladie)
-  drawText(page1, 'X', 512, 368, 9);
+  page1.drawText('X', { x: 512, y: 368, size: 9, font: fontBold, color: textColor })
 
-  // Praticien & INPE
-  drawBoxes(page1, data.consultation?.inpe, 368, 448, 12.8, 8.5);
-  drawText(page1, data.consultation?.ville, 435, 340, 8);
-  drawText(page1, data.consultation?.date, 355, 340, 8);
-
-  // Embed FSE QR Code in Top Right Corner
+  // Embed FSE QR Code
   try {
     const qrPayload = JSON.stringify({
       fse_ver: "1.0",
@@ -118,19 +142,17 @@ export async function fillFeuilleDeSoins(data) {
     console.warn('QR Code generation skipped:', e)
   }
 
-  // ==========================================
-  // PAGE 2: ACTES MÉDICAUX (Table)
-  // ==========================================
+  // Page 2: Actes Médicaux
   if (page2 && data.actes && data.actes.length > 0) {
-    let actY = 658;
+    let actY = 658
     data.actes.forEach((acte) => {
-      drawText(page2, acte.date, 52, actY, 8);
-      drawText(page2, acte.code, 128, actY, 8);
-      drawText(page2, acte.cotation, 188, actY, 8);
-      drawText(page2, `${acte.montant} DH`, 252, actY, 8);
-      drawText(page2, `INPE: ${acte.inpe}`, 355, actY, 7.5);
-      actY -= 20;
-    });
+      page2.drawText(String(acte.date), { x: 52, y: actY, size: 8, font: fontRegular, color: textColor })
+      page2.drawText(String(acte.code), { x: 128, y: actY, size: 8, font: fontBold, color: textColor })
+      page2.drawText(String(acte.cotation), { x: 188, y: actY, size: 8, font: fontBold, color: textColor })
+      page2.drawText(`${acte.montant} DH`, { x: 252, y: actY, size: 8, font: fontBold, color: textColor })
+      page2.drawText(`INPE: ${acte.inpe}`, { x: 355, y: actY, size: 7.5, font: fontRegular, color: textColor })
+      actY -= 20
+    })
   }
 
   return await pdfDoc.save()
