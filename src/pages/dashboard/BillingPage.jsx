@@ -16,7 +16,7 @@ import {
   subscribeClinicVisits,
 } from '../../lib/visitService'
 import InvoiceFormModal from '../../components/forms/InvoiceFormModal'
-import CnssPdfGenerator from '../../components/cnss/CnssPdfGenerator'
+import FeuilleDeSoinsGenerator from '../../components/cnss/FeuilleDeSoinsGenerator'
 
 const fmtMAD = (n) => (n || 0).toLocaleString('fr-FR') + ' MAD'
 
@@ -767,7 +767,7 @@ export default function BillingPage() {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
           >
-            <CnssPdfGenerator />
+            <FeuilleDeSoinsGenerator />
           </motion.div>
         )}
 
