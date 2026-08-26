@@ -2,10 +2,19 @@ import { PDFDocument } from 'pdf-lib'
 
 export const generateFSE = async (dbPatient, dbDoctor, dbConsultation) => {
   try {
-    // CACHE BUSTER: The '?t=' forces the browser to download the absolute newest file in the public folder
-    const pdfUrl = `/assets/FEUILLE-DE-SOINS-MALADIE.pdf?t=${new Date().getTime()}`;
-    const existingPdfBytes = await fetch(pdfUrl).then(res => res.arrayBuffer());
+    // 1. Define the URL (ensure the filename perfectly matches the file in public/assets/)
+    const fileName = 'FEUILLE-DE-SOINS-MALADIE_2.pdf';
+    const pdfUrl = `/assets/${fileName}?t=${new Date().getTime()}`;
     
+    // 2. Fetch with error handling & strict network 404 validation
+    const response = await fetch(pdfUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Fichier introuvable (404) : Le fichier ${fileName} n'existe pas dans le dossier public/assets/. Vérifiez le nom exact du fichier.`);
+    }
+
+    // 3. Only parse if we have a valid PDF response
+    const existingPdfBytes = await response.arrayBuffer();
     const pdfDoc = await PDFDocument.load(existingPdfBytes);
     const form = pdfDoc.getForm();
 
@@ -76,5 +85,6 @@ export const generateFSE = async (dbPatient, dbDoctor, dbConsultation) => {
 
   } catch (error) {
     console.error("Erreur FSE :", error);
+    throw error;
   }
 };
