@@ -38,26 +38,46 @@ export const generateFSE = async (dbPatient, dbDoctor, dbConsultation) => {
       }
     };
 
-    // Variables
+    // 1. Spacing Helper Function
+    const formatForBoxes = (text, spaceCount = 2) => {
+      if (!text) return '';
+      // Remove slashes, dashes, and spaces
+      const cleanText = String(text).replace(/[^a-zA-Z0-9]/g, '');
+      // Join each character with empty spaces
+      return cleanText.split('').join(' '.repeat(spaceCount));
+    };
+
+    // 2. Variables (Cleaned and formatted)
     const firstName = dbPatient?.prenom || dbPatient?.first_name || '';
     const lastName = dbPatient?.nom || dbPatient?.last_name || '';
     const fullName = `${firstName} ${lastName}`.trim().toUpperCase();
-    const today = dbConsultation?.date || dbConsultation?.date_consult || new Date().toLocaleDateString('fr-FR');
-    const price = dbConsultation?.price || dbConsultation?.montant || dbConsultation?.billing_amount || '150.00';
+    
+    // Format dates to DDMMYYYY without slashes, then spread them out
+    const rawDate = dbConsultation?.date || dbConsultation?.date_consult || new Date().toLocaleDateString('fr-FR');
+    const todaySpaced = formatForBoxes(rawDate, 2); 
+    const birthDateSpaced = formatForBoxes(dbPatient?.date_of_birth || dbPatient?.date_naissance, 2);
+    
+    // Format IDs
+    const immatSpaced = formatForBoxes(dbPatient?.cnss_number || dbPatient?.n_immatriculation || dbPatient?.immatriculation, 2);
+    const cinSpaced = formatForBoxes(dbPatient?.cin, 2);
+    const inpeSpaced = formatForBoxes(dbDoctor?.inpe_code || dbDoctor?.inpe, 2);
 
-    // Fill Fields
+    // 3. Fill Fields (Using the spaced variables)
     fillText('nom_assure', fullName);
     fillText('nom_patient', fullName);
-    fillText('immatriculation', dbPatient?.cnss_number || dbPatient?.n_immatriculation || dbPatient?.immatriculation || '');
-    fillText('cin_assure', dbPatient?.cin || '');
-    fillText('cin_patient', dbPatient?.cin || '');
+    fillText('immatriculation', immatSpaced);
+    fillText('cin_assure', cinSpaced);
+    fillText('cin_patient', cinSpaced);
     fillText('adresse', dbPatient?.address || dbPatient?.adresse || '');
-    fillText('montant_total', `${price} DH`);
+    
+    // Remove the ' DH' string here so it doesn't double-print on the form
+    fillText('montant_total', String(dbConsultation?.price || dbConsultation?.montant || dbConsultation?.billing_amount || '150.00'));
+    
     fillText('pieces_jointes', '1');
-    fillText('date_naissance', dbPatient?.date_of_birth || dbPatient?.date_naissance || '');
-    fillText('inpe_medecin', dbDoctor?.inpe_code || dbDoctor?.inpe || '');
-    fillText('date_patient', today);
-    fillText('date_medecin', today);
+    fillText('date_naissance', birthDateSpaced);
+    fillText('inpe_medecin', inpeSpaced);
+    fillText('date_patient', todaySpaced);
+    fillText('date_medecin', todaySpaced);
 
     // Logic for Checkboxes
     checkCheckbox('check_maladie');
