@@ -1,70 +1,40 @@
 import React, { useState } from 'react'
 import { FileText, Download, RefreshCw } from 'lucide-react'
-import { fillFeuilleDeSoins } from './fillFeuilleDeSoins'
+import { generateFSE } from './generateFSE'
 
 export default function FeuilleDeSoinsGenerator() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState(null)
 
-  // Sample data to inject into the CNSS template
-  const mockData = {
-    // Page 1: Assuré & Bénéficiaire
-    assure: {
-      nomPrenom: 'TAZI MERYEM',
-      immatriculation: '123456789',
-      cin: 'AB88419',
-      adresse: 'Casablanca, Maroc',
-      montantTotal: '150.00',
-      nombrePieces: '1',
-    },
-    beneficiaire: {
-      nomPrenom: 'TAZI MERYEM',
-      dateNaissance: '14/05/1998',
-      cin: 'AB88419',
-      sexe: 'F', // 'M' or 'F'
-      isConjoint: false,
-      isEnfant: false,
-    },
-    consultation: {
-      typeSoins: 'Maladie', // 'Maladie', 'Accident', 'Maternite', 'Hospitalisation'
-      ville: 'Casablanca',
-      date: '25/08/2026',
-      medecinNom: 'Dr. Othmane Touggani',
-      inpe: '191023456',
-    },
-    // Page 2: Description des actes effectués (NGAP)
-    actes: [
-      {
-        date: '25/08/2026',
-        code: 'CS',
-        cotation: 'C x 1',
-        montant: '150.00',
-        inpe: '191023456',
-      },
-    ],
+  // Sample database objects matching MacroMedica schema
+  const mockPatient = {
+    first_name: 'Meryem',
+    last_name: 'TAZI',
+    cnss_number: '123456789',
+    cin: 'AB88419',
+    address: 'Casablanca, Maroc',
+    date_of_birth: '14/05/1998',
+    gender: 'F',
   }
 
-  const generatePDF = async (shouldDownload = true) => {
+  const mockDoctor = {
+    inpe_code: '191023456',
+    city: 'Casablanca',
+  }
+
+  const mockConsultation = {
+    price: '150.00',
+    date: new Date().toLocaleDateString('fr-FR'),
+  }
+
+  const handleGenerate = async () => {
     setIsGenerating(true)
     try {
-      // Execute rotation-aware PDF fill logic
-      const pdfBytes = await fillFeuilleDeSoins(mockData)
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' })
-      const blobUrl = URL.createObjectURL(blob)
-      setGeneratedPdfUrl(blobUrl)
-
-      if (shouldDownload) {
-        const link = document.createElement('a')
-        link.href = blobUrl
-        link.download = `Feuille_De_Soins_${mockData.beneficiaire.nomPrenom.replace(/\s+/g, '_')}.pdf`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-      }
+      const url = await generateFSE(mockPatient, mockDoctor, mockConsultation)
+      if (url) setGeneratedPdfUrl(url)
     } catch (err) {
-      console.error('Error generating Feuille de Soins:', err)
-      alert('Erreur lors de la génération du PDF. Vérifiez que le fichier modèle est dans /public/assets/.')
+      console.error('Error generating FSE:', err)
+      alert('Erreur lors de la génération de la Feuille de Soins.')
     } finally {
       setIsGenerating(false)
     }
@@ -78,15 +48,15 @@ export default function FeuilleDeSoinsGenerator() {
             <FileText size={22} />
           </div>
           <div>
-            <h3 className="font-bold text-lg text-gray-900">Génération Feuille de Soins CNSS (Officielle)</h3>
+            <h3 className="font-bold text-lg text-gray-900">Génération Feuille de Soins CNSS (AcroForm Officielle)</h3>
             <p className="text-xs text-gray-500 font-medium">
-              Document réglementaire 2 pages estampillé avec QR Code FSE et rotation préservée sans setRotation().
+              Génération automatique via formulaires interactifs transparents AcroForm et form.flatten().
             </p>
           </div>
         </div>
 
         <button
-          onClick={() => generatePDF(true)}
+          onClick={handleGenerate}
           disabled={isGenerating}
           className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-2 disabled:opacity-50"
         >
@@ -102,7 +72,7 @@ export default function FeuilleDeSoinsGenerator() {
       {generatedPdfUrl && (
         <div className="pt-2">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-bold text-gray-700">Aperçu en direct du Modèle Officiel Estampillé (Orientation Parfaite):</p>
+            <p className="text-xs font-bold text-gray-700">Aperçu en direct du Modèle Officiel Formulaire Interatif (Cache-Busté):</p>
             <a href={generatedPdfUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 underline font-semibold">
               Ouvrir le PDF plein écran
             </a>
