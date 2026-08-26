@@ -10,7 +10,7 @@ import { fillFeuilleDeSoins } from './fillFeuilleDeSoins'
 export const generateFSE = async (dbPatient = {}, dbDoctor = {}, dbConsultation = {}) => {
   try {
     // 1. Fetch the template with form fields
-    const existingPdfBytes = await fetch('/assets/FEUILLE-DE-SOINS-MALADIE.pdf').then(res => res.arrayBuffer())
+    const existingPdfBytes = await fetch('/assets/FEUILLE-DE-SOINS-MALADIE_2.pdf').then(res => res.arrayBuffer())
     const pdfDoc = await PDFDocument.load(existingPdfBytes)
     
     let form = null
