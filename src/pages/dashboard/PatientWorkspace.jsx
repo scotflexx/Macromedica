@@ -914,6 +914,7 @@ export default function PatientWorkspace() {
 
   // --- Derived Values ---
   const age = patient ? calcAge(patient.date_naissance) : null
+  const initials = patient ? `${patient.prenom?.[0] || ''}${patient.nom?.[0] || ''}`.toUpperCase() : ''
   const bmi = calcBMI(vitals.weight, vitals.height)
   const chronicDisease = patient?.antecedents || '—'
   const currentTreatment = '—'
@@ -1100,6 +1101,40 @@ export default function PatientWorkspace() {
           </div>
         </div>
       </motion.header>
+
+      {/* --- Patient Identification Bar --- */}
+      <div className="w-full px-6 pt-4">
+        <div className="w-full flex items-center gap-3 rounded-[0.625rem] border-2 border-[#e2e8f0] bg-white px-4 py-2.5 shadow-sm">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-slate-800 to-slate-600 flex items-center justify-center text-white text-[13px] font-bold flex-shrink-0">
+            {initials}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className="text-[14px] font-bold text-[#334155] truncate">
+              {patient.prenom} {patient.nom}
+            </span>
+            {age !== null && (
+              <>
+                <span className="text-slate-300">•</span>
+                <span className="text-[13px] text-slate-500">{age} ans</span>
+              </>
+            )}
+            <span className="text-slate-300">•</span>
+            <span className="text-[13px] text-slate-500">{getGenderLabel(patient.sexe)}</span>
+            {patient.cin && (
+              <>
+                <span className="text-slate-300">•</span>
+                <span className="text-[13px] text-slate-500">CIN {patient.cin}</span>
+              </>
+            )}
+          </div>
+          {isConsultationActive && (
+            <span className="ml-auto flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              En consultation
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* --- Main Content Layout --- */}
       <main className="flex-1 w-full px-6 py-5 w-full">
