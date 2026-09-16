@@ -70,9 +70,10 @@ const MOCK_RESULTS = [
 ]
 
 // NOTE: this whole array is placeholder/mock data (fixed dates, fixed
-// fake doctors) — not wired to the real patient. `category`/`diagnosis`
-// were added to match a reference card layout; still mock, not real
-// clinical claims about the patient actually open in this workspace.
+// fake doctors) — not wired to the real patient. `category`/`diagnosis`/
+// `vitals`/`subItems` were added to match a reference card layout; still
+// mock, not real clinical claims about the patient actually open in this
+// workspace.
 const TIMELINE_EVENTS = [
   {
     id: '1',
@@ -84,6 +85,11 @@ const TIMELINE_EVENTS = [
     category: 'Urgence',
     diagnosis: 'Douleurs abdominales aiguës',
     summary: 'Patient admis pour douleurs abdominales aiguës. Analyses sanguines effectuées. Prise en charge immédiate.',
+    vitals: { temp: '38.2°C', bp: '110/70', hr: '96', weight: '78 kg' },
+    subItems: [
+      { type: 'lab', name: 'CRP', detail: '45 mg/L — élevé', status: 'Terminé' },
+      { type: 'medication', name: 'Paracétamol', detail: '1g · IV · dose unique', status: 'Terminé' },
+    ],
     details: `
 - Symptômes: Douleurs abdominales diffuses, nausées
 - Examen physique: Tendresse au niveau de l'épigastre
@@ -103,6 +109,11 @@ const TIMELINE_EVENTS = [
     category: 'Laboratoire',
     diagnosis: 'Bilan dans les normes',
     summary: 'Biologie standard, formule sanguine complète, glycémie à jeun.',
+    vitals: { temp: '36.9°C', bp: '122/78', hr: '74', weight: '78 kg' },
+    subItems: [
+      { type: 'lab', name: 'Glycémie à jeun', detail: '1,2 g/L — normal', status: 'Terminé' },
+      { type: 'lab', name: 'Bilan lipidique', detail: 'Cholestérol total 1,9 g/L', status: 'Terminé' },
+    ],
     details: `
 - Hémoglobine: 14,2 g/dL
 - Glycémie à jeun: 1,2 g/L
@@ -122,6 +133,10 @@ const TIMELINE_EVENTS = [
     category: 'Suivi annuel',
     diagnosis: 'Bilan de santé normal',
     summary: 'Bilan de santé annuel. Tension 120/80. Poids stable. À revoir dans 6 mois.',
+    vitals: { temp: '36.7°C', bp: '120/80', hr: '72', weight: '78 kg' },
+    subItems: [
+      { type: 'exam', name: 'ECG', detail: 'Rythme sinusal normal', status: 'Terminé' },
+    ],
     details: `
 - Poids: 78 kg
 - Taille: 1,75 m
@@ -142,6 +157,11 @@ const TIMELINE_EVENTS = [
     category: 'Ordonnance',
     diagnosis: null,
     summary: 'Metformine 500mg — 2x/jour. Oméprazole 20mg — 1x/jour le matin.',
+    vitals: null,
+    subItems: [
+      { type: 'medication', name: 'Metformine', detail: '500mg · 2x/jour · 3 mois', status: 'Actif' },
+      { type: 'medication', name: 'Oméprazole', detail: '20mg · 1x/jour · 3 mois', status: 'Actif' },
+    ],
     details: `
 - Metformine 500mg: 1 comprimé matin et soir au repas
 - Oméprazole 20mg: 1 comprimé le matin avant le petit-déjeuner
@@ -332,7 +352,20 @@ function BloodPressureCard({ systolic, diastolic, onSystolicChange, onDiastolicC
 }
 
 // --- Timeline Event Component ---
+const SUB_ITEM_ICONS = {
+  lab: TestTube2,
+  medication: Pill,
+  exam: Activity,
+}
+
+const SUB_ITEM_STATUS_STYLES = {
+  'Terminé': 'bg-slate-100 text-slate-600 border-slate-200',
+  'Actif': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+}
+
 function TimelineEvent({ event, index, onViewDetails }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
   const getEventConfig = () => {
     switch (event.type) {
       case 'urgency': return { label: 'Urgence', color: 'text-red-600' }
@@ -345,6 +378,8 @@ function TimelineEvent({ event, index, onViewDetails }) {
   }
 
   const config = getEventConfig()
+  const hasVitals = event.vitals && Object.values(event.vitals).some(Boolean)
+  const hasSubItems = event.subItems?.length > 0
 
   return (
     <motion.article
@@ -354,28 +389,97 @@ function TimelineEvent({ event, index, onViewDetails }) {
       className="relative w-full pl-8 pb-3.5 last:pb-0"
     >
       <span className="absolute left-[5px] top-[15px] z-10 w-2.5 h-2.5 rounded-full bg-slate-900" />
-      <button
-        onClick={() => onViewDetails(event)}
-        className="w-full text-left rounded-[0.625rem] border-2 border-[#e2e8f0] bg-white px-4 py-3.5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-200"
+      <div
+        className={`w-full rounded-[0.625rem] border-2 bg-white shadow-sm transition-all duration-200 ${
+          isExpanded ? 'border-slate-300 shadow-md' : 'border-[#e2e8f0] hover:border-slate-300 hover:shadow-md'
+        }`}
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-1.5 min-w-0">
-            <ChevronRight className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
-            <h3 className="text-[14.5px] font-bold text-slate-900 leading-snug truncate">
-              {event.title}
-            </h3>
+        <button
+          onClick={() => setIsExpanded((v) => !v)}
+          className="w-full text-left px-4 py-3.5"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-1.5 min-w-0">
+              <ChevronRight
+                className={`w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+              />
+              <h3 className="text-[14.5px] font-bold text-slate-900 leading-snug truncate">
+                {event.title}
+              </h3>
+            </div>
+            <span className="shrink-0 text-[12px] font-medium text-slate-400">{event.date}</span>
           </div>
-          <span className="shrink-0 text-[12px] font-medium text-slate-400">{event.date}</span>
-        </div>
-        <p className={`mt-1 pl-[22px] text-[12.5px] font-semibold ${config.color}`}>
-          {event.category || config.label}
-        </p>
-        {event.diagnosis && (
-          <p className="mt-1.5 pl-[22px] text-[13px] text-slate-500">
-            Diagnostic : <span className="font-semibold text-slate-800">{event.diagnosis}</span>
+          <p className={`mt-1 pl-[22px] text-[12.5px] font-semibold ${config.color}`}>
+            {event.category || config.label}
           </p>
+          {event.diagnosis && (
+            <p className="mt-1.5 pl-[22px] text-[13px] text-slate-500">
+              Diagnostic : <span className="font-semibold text-slate-800">{event.diagnosis}</span>
+            </p>
+          )}
+        </button>
+
+        {isExpanded && (hasVitals || hasSubItems || event.details) && (
+          <div className="px-4 pb-3.5 pl-[46px] space-y-2.5">
+            {hasVitals && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {event.vitals.temp && (
+                  <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[12px] font-medium">T {event.vitals.temp}</span>
+                )}
+                {event.vitals.bp && (
+                  <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[12px] font-medium">BP {event.vitals.bp}</span>
+                )}
+                {event.vitals.hr && (
+                  <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[12px] font-medium">HR {event.vitals.hr}</span>
+                )}
+                {event.vitals.weight && (
+                  <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-[12px] font-medium">{event.vitals.weight}</span>
+                )}
+              </div>
+            )}
+
+            {hasSubItems && (
+              <div className="space-y-2">
+                {event.subItems.map((item, i) => {
+                  const Icon = SUB_ITEM_ICONS[item.type] || FileText
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2.5"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 flex-shrink-0">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-bold text-slate-900 truncate">{item.name}</p>
+                        {item.detail && <p className="text-[12px] text-slate-500 truncate">{item.detail}</p>}
+                      </div>
+                      {item.status && (
+                        <span
+                          className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                            SUB_ITEM_STATUS_STYLES[item.status] || 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {item.status}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {event.details && (
+              <button
+                onClick={() => onViewDetails(event)}
+                className="text-[12.5px] font-semibold text-blue-600 hover:text-blue-700"
+              >
+                Voir la note complète →
+              </button>
+            )}
+          </div>
         )}
-      </button>
+      </div>
     </motion.article>
   )
 }
@@ -1363,7 +1467,7 @@ export default function PatientWorkspace() {
                         {!isConsultationActive && (
                           <button
                             onClick={handleStartConsultation}
-                            className="h-10 px-4 rounded-[0.625rem] font-bold text-[13px] bg-slate-900 text-white hover:bg-slate-800 transition-all flex items-center gap-1.5 shadow-sm flex-shrink-0"
+                            className="h-11 px-5 rounded-[0.625rem] font-bold text-[14px] bg-black text-white hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm hover:-translate-y-0.5 active:translate-y-0 flex-shrink-0"
                           >
                             <Plus className="w-4 h-4" />
                             Nouvelle consultation
