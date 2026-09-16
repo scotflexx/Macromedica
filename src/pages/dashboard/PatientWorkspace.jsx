@@ -1140,15 +1140,6 @@ export default function PatientWorkspace() {
               )}
             </div>
           </div>
-          {isConsultationActive && (
-            <span className="flex-shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-[0_0_0_3px_rgba(16,185,129,0.08)]">
-              <span className="relative flex h-2 w-2 shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-50" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
-              </span>
-              En consultation
-            </span>
-          )}
         </div>
       </motion.div>
 
