@@ -69,6 +69,10 @@ const MOCK_RESULTS = [
   { id: 2, type: 'Tension', value: '120/80 mmHg', date: '14 juin 2026', status: 'normal' },
 ]
 
+// NOTE: this whole array is placeholder/mock data (fixed dates, fixed
+// fake doctors) — not wired to the real patient. `category`/`diagnosis`
+// were added to match a reference card layout; still mock, not real
+// clinical claims about the patient actually open in this workspace.
 const TIMELINE_EVENTS = [
   {
     id: '1',
@@ -77,6 +81,8 @@ const TIMELINE_EVENTS = [
     time: '14:30',
     title: 'Urgence Douleurs Abdominales',
     doctor: 'Dr. Benali',
+    category: 'Urgence',
+    diagnosis: 'Douleurs abdominales aiguës',
     summary: 'Patient admis pour douleurs abdominales aiguës. Analyses sanguines effectuées. Prise en charge immédiate.',
     details: `
 - Symptômes: Douleurs abdominales diffuses, nausées
@@ -94,6 +100,8 @@ const TIMELINE_EVENTS = [
     time: '09:00',
     title: 'Analyses Sanguines',
     doctor: 'Dr. Touggani',
+    category: 'Laboratoire',
+    diagnosis: 'Bilan dans les normes',
     summary: 'Biologie standard, formule sanguine complète, glycémie à jeun.',
     details: `
 - Hémoglobine: 14,2 g/dL
@@ -111,6 +119,8 @@ const TIMELINE_EVENTS = [
     time: '10:30',
     title: 'Consultation Annuelle',
     doctor: 'Dr. Benali',
+    category: 'Suivi annuel',
+    diagnosis: 'Bilan de santé normal',
     summary: 'Bilan de santé annuel. Tension 120/80. Poids stable. À revoir dans 6 mois.',
     details: `
 - Poids: 78 kg
@@ -129,6 +139,8 @@ const TIMELINE_EVENTS = [
     time: '11:00',
     title: 'Prescription Médicamenteuse',
     doctor: 'Dr. Benali',
+    category: 'Ordonnance',
+    diagnosis: null,
     summary: 'Metformine 500mg — 2x/jour. Oméprazole 20mg — 1x/jour le matin.',
     details: `
 - Metformine 500mg: 1 comprimé matin et soir au repas
@@ -323,12 +335,12 @@ function BloodPressureCard({ systolic, diastolic, onSystolicChange, onDiastolicC
 function TimelineEvent({ event, index, onViewDetails }) {
   const getEventConfig = () => {
     switch (event.type) {
-      case 'urgency': return { label: 'Urgence', icon: <AlertTriangle size={14} /> }
-      case 'lab': return { label: 'Laboratoire', icon: <Microscope size={14} /> }
-      case 'consultation': return { label: 'Consultation', icon: <Stethoscope size={14} /> }
-      case 'imaging': return { label: 'Imagerie', icon: <ImageIcon size={14} /> }
-      case 'prescription': return { label: 'Ordonnance', icon: <Pill size={14} /> }
-      default: return { label: 'Autre', icon: <FileText size={14} /> }
+      case 'urgency': return { label: 'Urgence', color: 'text-red-600' }
+      case 'lab': return { label: 'Laboratoire', color: 'text-emerald-600' }
+      case 'consultation': return { label: 'Consultation', color: 'text-blue-600' }
+      case 'imaging': return { label: 'Imagerie', color: 'text-sky-600' }
+      case 'prescription': return { label: 'Ordonnance', color: 'text-purple-600' }
+      default: return { label: 'Autre', color: 'text-slate-500' }
     }
   }
 
@@ -339,55 +351,31 @@ function TimelineEvent({ event, index, onViewDetails }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: index * 0.03 }}
-      className="relative w-full pl-12 pb-6 last:pb-0"
+      className="relative w-full pl-8 pb-3.5 last:pb-0"
     >
-      <motion.div
-        className="absolute left-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-blue-600"
+      <span className="absolute left-[5px] top-[15px] z-10 w-2.5 h-2.5 rounded-full bg-slate-900" />
+      <button
+        onClick={() => onViewDetails(event)}
+        className="w-full text-left rounded-[0.625rem] border-2 border-[#e2e8f0] bg-white px-4 py-3.5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-200"
       >
-        {config.icon}
-      </motion.div>
-      <motion.div
-        whileHover={{ x: 1, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
-        transition={{ duration: 0.1 }}
-        className="w-full min-h-[176px] rounded-xl border border-slate-200 bg-white p-5 shadow-[0_2px_10px_rgba(15,23,42,0.06)]"
-      >
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="flex-1">
-            <p className="text-[12px] font-medium text-slate-400">
-              {event.date} • {event.doctor}
-            </p>
-            <h3 className="mt-1 text-base font-semibold leading-snug text-slate-900">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-1.5 min-w-0">
+            <ChevronRight className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+            <h3 className="text-[14.5px] font-bold text-slate-900 leading-snug truncate">
               {event.title}
             </h3>
           </div>
-          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium leading-none text-blue-600">
-            {config.label}
-          </span>
+          <span className="shrink-0 text-[12px] font-medium text-slate-400">{event.date}</span>
         </div>
-        <p className="mb-4 line-clamp-2 text-sm leading-relaxed text-slate-600">
-          {event.summary}
+        <p className={`mt-1 pl-[22px] text-[12.5px] font-semibold ${config.color}`}>
+          {event.category || config.label}
         </p>
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => onViewDetails(event)}
-            className="flex items-center gap-1 text-[13px] font-semibold text-blue-600 hover:text-blue-700"
-          >
-            Voir détails →
-          </button>
-          {event.tags?.length > 0 && (
-            <div className="flex gap-1.5">
-              {event.tags.map(tag => (
-                <span
-                  key={tag}
-                  className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium leading-none text-slate-500"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      </motion.div>
+        {event.diagnosis && (
+          <p className="mt-1.5 pl-[22px] text-[13px] text-slate-500">
+            Diagnostic : <span className="font-semibold text-slate-800">{event.diagnosis}</span>
+          </p>
+        )}
+      </button>
     </motion.article>
   )
 }
@@ -1363,14 +1351,28 @@ export default function PatientWorkspace() {
                 {/* --- History Content --- */}
                 {activeTab === 'Historique' && (
                   <div className="space-y-5">
-                    <div className="mb-4">
-                        <h2 className="text-[16px] font-bold text-slate-900">
-                          Parcours de soins
-                        </h2>
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                        <div>
+                          <h2 className="text-[16px] font-bold text-slate-900">
+                            Parcours de soins
+                          </h2>
+                          <p className="text-[13px] text-slate-500 mt-0.5">
+                            Chronologie des consultations, actes et ordonnances
+                          </p>
+                        </div>
+                        {!isConsultationActive && (
+                          <button
+                            onClick={handleStartConsultation}
+                            className="h-10 px-4 rounded-[0.625rem] font-bold text-[13px] bg-slate-900 text-white hover:bg-slate-800 transition-all flex items-center gap-1.5 shadow-sm flex-shrink-0"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Nouvelle consultation
+                          </button>
+                        )}
                       </div>
                     {/* Timeline */}
                     {TIMELINE_EVENTS.length > 0 ? (
-                      <div className="relative w-full pt-1 before:absolute before:left-4 before:top-5 before:bottom-5 before:w-px before:bg-slate-200">
+                      <div className="relative w-full pt-1 before:absolute before:left-[9px] before:top-4 before:bottom-4 before:w-px before:bg-slate-200">
                         {TIMELINE_EVENTS.map((event, index) => (
                           <TimelineEvent
                             key={event.id}
