@@ -44,11 +44,13 @@ import {
   Info,
   ContactRound,
   HeartPulse,
+  Loader2,
 } from 'lucide-react'
 import { useAppContext } from '../../context/AppContext'
 
 import { getPatientById, getPatientClinicalFields } from '../../lib/api'
 import { VISIT_STATUSES } from '../../lib/workflow'
+import { createWalkInVisit } from '../../lib/visitService'
 import { useFocusMode } from '../../hooks/useFocusMode'
 import { Backdrop, FocusableCard, MedicalTextarea } from '../../components/FocusMode'
 import PreparationChecklist from '../../components/consultation/PreparationChecklist'
@@ -817,8 +819,18 @@ export default function PatientWorkspace() {
 
   // --- State ---
   const actionParam = searchParams.get('action')
-  const [activeTab, setActiveTab] = useState(startConsultation ? 'Constantes & Motif' : 'Historique')
-  const [consultationStatus, setConsultationStatus] = useState(startConsultation ? 'in_progress' : 'not_started')
+  const [activeTab, setActiveTab] = useState('Historique')
+  const [consultationStatus, setConsultationStatus] = useState('not_started')
+
+  // Consultation entry now lives on its own page. Arriving here with
+  // ?startConsultation=true (e.g. from the waiting room's "Commencer") is a
+  // legacy entry point — bounce straight to it instead of rendering a tab
+  // that no longer exists.
+  useEffect(() => {
+    if (startConsultation && visitId) {
+      navigate(`/consultation/${visitId}`, { replace: true })
+    }
+  }, [startConsultation, visitId, navigate])
   const [showPatientSidebar, setShowPatientSidebar] = useState(false)
   const [timerSeconds, setTimerSeconds] = useState(0)
   const [selectedEvent, setSelectedEvent] = useState(null)
@@ -918,10 +930,26 @@ export default function PatientWorkspace() {
   }, [patientIdParam])
 
   // --- Handlers ---
-  const handleStartConsultation = useCallback(() => {
-    setConsultationStatus('in_progress')
-    setActiveTab('Constantes & Motif')
-  }, [])
+  // Consultation entry (vitals, exam, workup, notes) lives on its own page
+  // (ConsultationWorkspace, /consultation/:visitId) rather than as tabs here.
+  // If the patient was opened without an active visit (e.g. from the patient
+  // list rather than the waiting room), create one first.
+  const [startingConsultation, setStartingConsultation] = useState(false)
+  const handleStartConsultation = useCallback(async () => {
+    if (visitId) {
+      navigate(`/consultation/${visitId}`)
+      return
+    }
+    setStartingConsultation(true)
+    try {
+      const visit = await createWalkInVisit(patientIdParam, profile?.id)
+      navigate(`/consultation/${visit.id}`)
+    } catch (err) {
+      notify({ title: 'Erreur', description: err.message || 'Impossible de démarrer la consultation.', tone: 'error' })
+    } finally {
+      setStartingConsultation(false)
+    }
+  }, [visitId, patientIdParam, profile?.id, navigate, notify])
 
   const handleEndConsultation = useCallback(() => {
     setShowEndConfirmModal(true)
@@ -1183,10 +1211,15 @@ export default function PatientWorkspace() {
                 
                 <button
                   onClick={handleStartConsultation}
-                  className="h-10 px-5 rounded-[0.625rem] font-bold text-[13px] bg-[#2563eb] text-white border-2 border-[#60a5fa] hover:bg-[#1e40af] hover:border-[#1e3a8a] transition-all flex items-center gap-2 shadow-[0_3px_10px_rgba(37,99,235,0.25)] hover:-translate-y-0.5 active:translate-y-0"
+                  disabled={startingConsultation}
+                  className="h-10 px-5 rounded-[0.625rem] font-bold text-[13px] bg-[#2563eb] text-white border-2 border-[#60a5fa] hover:bg-[#1e40af] hover:border-[#1e3a8a] transition-all flex items-center gap-2 shadow-[0_3px_10px_rgba(37,99,235,0.25)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:pointer-events-none"
                 >
-                  <Save className="w-4 h-4 text-white" />
-                  Enregistrer
+                  {startingConsultation ? (
+                    <Loader2 className="w-4 h-4 text-white animate-spin" />
+                  ) : (
+                    <Plus className="w-4 h-4 text-white" />
+                  )}
+                  Commencer
                 </button>
               </>
             )}
@@ -1247,7 +1280,7 @@ export default function PatientWorkspace() {
               transition={{ duration: 0.35, delay: 0.1 }}
             >
               <nav role="tablist" className="bg-gray-100 rounded-full p-1 flex w-full shadow-inner">
-                {['Constantes & Motif', 'Examen', 'Bilan', 'Historique', 'Documents'].map((tab) => (
+                {['Historique', 'Documents'].map((tab) => (
                   <button
                     key={tab}
                     role="tab"
@@ -1464,15 +1497,18 @@ export default function PatientWorkspace() {
                             Chronologie des consultations, actes et ordonnances
                           </p>
                         </div>
-                        {!isConsultationActive && (
-                          <button
-                            onClick={handleStartConsultation}
-                            className="h-11 px-5 rounded-[0.625rem] font-bold text-[14px] bg-black text-white hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm hover:-translate-y-0.5 active:translate-y-0 flex-shrink-0"
-                          >
+                        <button
+                          onClick={handleStartConsultation}
+                          disabled={startingConsultation}
+                          className="h-11 px-5 rounded-[0.625rem] font-bold text-[14px] bg-black text-white hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm hover:-translate-y-0.5 active:translate-y-0 flex-shrink-0 disabled:opacity-60 disabled:pointer-events-none"
+                        >
+                          {startingConsultation ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
                             <Plus className="w-4 h-4" />
-                            Nouvelle consultation
-                          </button>
-                        )}
+                          )}
+                          Nouvelle consultation
+                        </button>
                       </div>
                     {/* Timeline */}
                     {TIMELINE_EVENTS.length > 0 ? (
