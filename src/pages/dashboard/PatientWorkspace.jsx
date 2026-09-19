@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams, useBlocker } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft,
@@ -37,6 +37,7 @@ import {
   FilePlus,
   Save,
   CalendarClock,
+  Check,
   Wind,
   Zap,
   Shield,
@@ -44,14 +45,15 @@ import {
   Info,
   ContactRound,
   HeartPulse,
-  Loader2,
 } from 'lucide-react'
 import { useAppContext } from '../../context/AppContext'
 
 import { getPatientById, getPatientClinicalFields } from '../../lib/api'
 import { VISIT_STATUSES } from '../../lib/workflow'
-import { createWalkInVisit } from '../../lib/visitService'
 import { useFocusMode } from '../../hooks/useFocusMode'
+import ConsultationSheet from '../../components/consultation/ConsultationSheet'
+import { useEncounterDraft } from '../../hooks/useEncounterDraft'
+import { getOpenDraft, listCompletedEncounters, normalizeNote } from '../../lib/encounterService'
 import { Backdrop, FocusableCard, MedicalTextarea } from '../../components/FocusMode'
 import PreparationChecklist from '../../components/consultation/PreparationChecklist'
 
@@ -71,108 +73,6 @@ const MOCK_RESULTS = [
   { id: 2, type: 'Tension', value: '120/80 mmHg', date: '14 juin 2026', status: 'normal' },
 ]
 
-// NOTE: this whole array is placeholder/mock data (fixed dates, fixed
-// fake doctors) — not wired to the real patient. `category`/`diagnosis`/
-// `vitals`/`subItems` were added to match a reference card layout; still
-// mock, not real clinical claims about the patient actually open in this
-// workspace.
-const TIMELINE_EVENTS = [
-  {
-    id: '1',
-    type: 'urgency',
-    date: '19 juin 2026',
-    time: '14:30',
-    title: 'Urgence Douleurs Abdominales',
-    doctor: 'Dr. Benali',
-    category: 'Urgence',
-    diagnosis: 'Douleurs abdominales aiguës',
-    summary: 'Patient admis pour douleurs abdominales aiguës. Analyses sanguines effectuées. Prise en charge immédiate.',
-    vitals: { temp: '38.2°C', bp: '110/70', hr: '96', weight: '78 kg' },
-    subItems: [
-      { type: 'lab', name: 'CRP', detail: '45 mg/L — élevé', status: 'Terminé' },
-      { type: 'medication', name: 'Paracétamol', detail: '1g · IV · dose unique', status: 'Terminé' },
-    ],
-    details: `
-- Symptômes: Douleurs abdominales diffuses, nausées
-- Examen physique: Tendresse au niveau de l'épigastre
-- Analyses: Leucocytes 12G/L, CRP 45 mg/L
-- Traitement: Antalgiques, repos
-- Suivi: Rendez-vous dans 7 jours
-    `,
-    tags: ['Analyses', 'Douleur']
-  },
-  {
-    id: '2',
-    type: 'lab',
-    date: '14 juin 2026',
-    time: '09:00',
-    title: 'Analyses Sanguines',
-    doctor: 'Dr. Touggani',
-    category: 'Laboratoire',
-    diagnosis: 'Bilan dans les normes',
-    summary: 'Biologie standard, formule sanguine complète, glycémie à jeun.',
-    vitals: { temp: '36.9°C', bp: '122/78', hr: '74', weight: '78 kg' },
-    subItems: [
-      { type: 'lab', name: 'Glycémie à jeun', detail: '1,2 g/L — normal', status: 'Terminé' },
-      { type: 'lab', name: 'Bilan lipidique', detail: 'Cholestérol total 1,9 g/L', status: 'Terminé' },
-    ],
-    details: `
-- Hémoglobine: 14,2 g/dL
-- Glycémie à jeun: 1,2 g/L
-- Cholestérol total: 1,9 g/L
-- Triglycérides: 1,1 g/L
-- Conclusion: Bilan dans les normes, surveiller glycémie
-    `,
-    tags: ['Bilan']
-  },
-  {
-    id: '3',
-    type: 'consultation',
-    date: '10 juin 2026',
-    time: '10:30',
-    title: 'Consultation Annuelle',
-    doctor: 'Dr. Benali',
-    category: 'Suivi annuel',
-    diagnosis: 'Bilan de santé normal',
-    summary: 'Bilan de santé annuel. Tension 120/80. Poids stable. À revoir dans 6 mois.',
-    vitals: { temp: '36.7°C', bp: '120/80', hr: '72', weight: '78 kg' },
-    subItems: [
-      { type: 'exam', name: 'ECG', detail: 'Rythme sinusal normal', status: 'Terminé' },
-    ],
-    details: `
-- Poids: 78 kg
-- Taille: 1,75 m
-- IMC: 25,5
-- Tension artérielle: 120/80 mmHg
-- Fréquence cardiaque: 72 bpm
-- Recommandations: Continuer régime équilibré, activité physique régulière
-    `,
-    tags: ['Suivi', 'Bilan']
-  },
-  {
-    id: '4',
-    type: 'prescription',
-    date: '10 juin 2026',
-    time: '11:00',
-    title: 'Prescription Médicamenteuse',
-    doctor: 'Dr. Benali',
-    category: 'Ordonnance',
-    diagnosis: null,
-    summary: 'Metformine 500mg — 2x/jour. Oméprazole 20mg — 1x/jour le matin.',
-    vitals: null,
-    subItems: [
-      { type: 'medication', name: 'Metformine', detail: '500mg · 2x/jour · 3 mois', status: 'Actif' },
-      { type: 'medication', name: 'Oméprazole', detail: '20mg · 1x/jour · 3 mois', status: 'Actif' },
-    ],
-    details: `
-- Metformine 500mg: 1 comprimé matin et soir au repas
-- Oméprazole 20mg: 1 comprimé le matin avant le petit-déjeuner
-- Durée: 3 mois renouvelable
-- Rendez-vous de contrôle: dans 3 mois
-    `,
-    tags: []
-  }
-]
 
 const DOCUMENTS = [
   { id: 1, type: 'prescription', name: 'Ordonnance', date: '19 juin 2026', doctor: 'Dr. Benali' },
@@ -182,13 +82,13 @@ const DOCUMENTS = [
 
 // --- Helper Functions ---
 function calcAge(dateStr) {
-  if (!dateStr) return 34
+  if (!dateStr) return null
   const birth = new Date(dateStr)
   const today = new Date()
   let age = today.getFullYear() - birth.getFullYear()
   const m = today.getMonth() - birth.getMonth()
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
-  return age > 0 ? age : 34
+  return Number.isFinite(age) && age >= 0 ? age : null
 }
 
 function formatTimer(seconds) {
@@ -219,7 +119,6 @@ function calcBMI(weightKg, heightCm) {
   return bmi.toFixed(1)
 }
 
-const CONSULTATION_TABS = ['Constantes & Motif', 'Examen', 'Bilan', 'Historique']
 
 function PatientInfoRow({ icon: Icon, label, value }) {
   return (
@@ -252,7 +151,7 @@ function PatientSidebar({ patient, age, chronicDisease, currentTreatment, emerge
               {patient.prenom} {patient.nom}
             </h2>
             <p className="mt-1 text-sm text-blue-100/90 font-medium">
-              {age} ans • {getGenderLabel(patient.sexe)}
+              {age !== null ? `${age} ans` : 'Âge non renseigné'} • {getGenderLabel(patient.sexe)}
             </p>
           </div>
         </div>
@@ -272,7 +171,7 @@ function PatientSidebar({ patient, age, chronicDisease, currentTreatment, emerge
             <span className={`text-sm font-bold ${hasAllergies ? 'text-red-700' : 'text-red-600'}`}>Allergies</span>
           </div>
           <p className={`text-sm font-medium leading-relaxed ${hasAllergies ? 'text-red-800' : 'text-red-700/80'}`}>
-            {hasAllergies ? allergies : 'Aucune connue'}
+            {hasAllergies ? allergies : 'Non renseignées'}
           </p>
         </div>
       </div>
@@ -286,72 +185,7 @@ function PatientSidebar({ patient, age, chronicDisease, currentTreatment, emerge
   )
 }
 
-function VitalCard({ icon: Icon, label, unit, value, onChange, placeholder, readOnly = false, className = '' }) {
-  // ⓘ STUB : Indicateur d'anomalie (toujours masqué).
-  // Pour l'activer ultérieurement : remplacer `false` par la condition issue des règles fournies
-  // (aucun seuil n'est actuellement documenté dans le codebase).
-  const isAbnormal = false
 
-  return (
-    <div className={`rounded-lg border border-slate-200 bg-white p-4 ${className}`}>
-      <div className="mb-2 flex items-center gap-1.5 text-slate-400">
-        <Icon size={14} />
-        <span className="text-xs font-medium text-slate-500">{label}</span>
-      </div>
-      <div className="flex items-baseline gap-1.5">
-        <input
-          type="text"
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-          readOnly={readOnly}
-          className={`w-full bg-transparent text-2xl font-bold text-slate-900 outline-none placeholder:text-slate-300 ${readOnly ? 'cursor-default' : ''}`}
-        />
-        {unit && <span className="shrink-0 text-xs font-medium text-slate-400">{unit}</span>}
-      </div>
-      <div className="mt-2 h-1 w-full">
-        {isAbnormal && <span className="block h-1.5 w-1.5 rounded-full bg-red-500" />}
-      </div>
-    </div>
-  )
-}
-
-function BloodPressureCard({ systolic, diastolic, onSystolicChange, onDiastolicChange }) {
-  // ⓘ STUB : Indicateur d'anomalie (toujours masqué).
-  // Règles attendues (non documentées dans codebase, stub jusqu'à fourniture) :
-  // systo > 140 || diasto > 90 || systo < 90 || diasto < 60  →  point
-  const isAbnormal = false
-
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <div className="mb-2 flex items-center gap-1.5 text-slate-400">
-        <Heart size={14} />
-        <span className="text-xs font-medium text-slate-500">Tension artérielle</span>
-      </div>
-      <div className="flex items-baseline gap-2">
-        <input
-          type="text"
-          value={systolic}
-          onChange={onSystolicChange}
-          placeholder="120"
-          className="w-full bg-transparent text-2xl font-bold text-slate-900 outline-none placeholder:text-slate-300"
-        />
-        <span className="text-xl font-light text-slate-300">/</span>
-        <input
-          type="text"
-          value={diastolic}
-          onChange={onDiastolicChange}
-          placeholder="80"
-          className="w-full bg-transparent text-2xl font-bold text-slate-900 outline-none placeholder:text-slate-300"
-        />
-        <span className="shrink-0 text-xs font-medium text-slate-400">mmHg</span>
-      </div>
-      <div className="mt-2 h-1 w-full">
-        {isAbnormal && <span className="block h-1.5 w-1.5 rounded-full bg-red-500" />}
-      </div>
-    </div>
-  )
-}
 
 // --- Timeline Event Component ---
 const SUB_ITEM_ICONS = {
@@ -363,6 +197,51 @@ const SUB_ITEM_ICONS = {
 const SUB_ITEM_STATUS_STYLES = {
   'Terminé': 'bg-slate-100 text-slate-600 border-slate-200',
   'Actif': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+}
+
+// Completed consultations (clinical_encounters) -> history cards. Summary on the
+// card; the full note is one click away in the details modal.
+function encounterToEvent(enc) {
+  const n = normalizeNote(enc.note)
+  const done = new Date(enc.completed_at || enc.started_at)
+  const v = n.vitals
+  const withUnit = (x, u) => (String(x).trim() ? `${String(x).trim()}${u}` : '')
+  const line = (label, text) => (String(text || '').trim() ? `${label}\n${String(text).trim()}` : '')
+  const treatments = n.traitements.filter((r) => r.medicament.trim())
+  const details = [
+    line('Motif', [n.motif, n.depuis && `Depuis : ${n.depuis}`, n.evolution && `Évolution : ${n.evolution}`].filter(Boolean).join(' · ')),
+    line('Symptômes / histoire', n.histoire),
+    line('Examen clinique', n.examen),
+    line('Diagnostic', n.diagnostics.join(' ; ')),
+    line('Conduite à tenir', n.conduite),
+    line('Traitement', treatments.map((r) => [r.medicament, r.posologie, r.duree].filter(Boolean).join(' · ')).join('\n')),
+    line('Examens', n.examens.join(' · ')),
+    line('Suivi', [n.followUpDate && new Date(`${n.followUpDate}T12:00:00`).toLocaleDateString('fr-FR'), n.followUpNotes].filter(Boolean).join(' · ')),
+    line('Documents', n.documents.join(' · ')),
+  ].filter(Boolean).join('\n\n')
+  return {
+    id: enc.id,
+    type: 'consultation',
+    date: done.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
+    time: done.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+    title: n.motif.split('\n')[0].trim() || 'Consultation',
+    category: 'Consultation',
+    doctor: '',
+    diagnosis: n.diagnostics.join(' ; '),
+    summary: n.motif,
+    details,
+    tags: [],
+    vitals: {
+      temp: withUnit(v.temperature, ' °C'),
+      bp: v.bloodPressureSystolic && v.bloodPressureDiastolic ? `${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}` : '',
+      hr: v.heartRate,
+      weight: withUnit(v.weight, ' kg'),
+    },
+    subItems: [
+      ...treatments.map((r) => ({ type: 'medication', name: r.medicament, detail: [r.posologie, r.duree].filter(Boolean).join(' · '), status: null })),
+      ...n.examens.map((x) => ({ type: 'exam', name: x, detail: '', status: null })),
+    ],
+  }
 }
 
 function TimelineEvent({ event, index, onViewDetails }) {
@@ -755,43 +634,6 @@ function DocumentCard({ doc }) {
   )
 }
 
-// --- Quick Note Field (with Focus Mode) ---
-function QuickNoteField({ 
-  title, 
-  placeholder, 
-  value, 
-  onChange, 
-  icon: Icon, 
-  autoFocus = false, 
-  cardId, 
-  activeCardId, 
-  enterFocusMode, 
-  exitFocusMode,
-  patientConsultations = [],
-  onSave,
-  autoSaveDelay = 3000
-}) {
-  return (
-    <FocusableCard
-      cardId={cardId}
-      activeCardId={activeCardId}
-      enterFocusMode={enterFocusMode}
-      exitFocusMode={exitFocusMode}
-      title={title}
-      icon={Icon}
-    >
-      <MedicalTextarea
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        patientConsultations={patientConsultations}
-        onSave={onSave}
-        autoSaveDelay={autoSaveDelay}
-      />
-    </FocusableCard>
-  )
-}
 
 // --- Empty State Component ---
 function EmptyState({ title, description, icon: Icon }) {
@@ -805,6 +647,8 @@ function EmptyState({ title, description, icon: Icon }) {
     </div>
   )
 }
+
+
 
 // --- Main Component ---
 export default function PatientWorkspace() {
@@ -820,24 +664,13 @@ export default function PatientWorkspace() {
   // --- State ---
   const actionParam = searchParams.get('action')
   const [activeTab, setActiveTab] = useState('Historique')
-  const [consultationStatus, setConsultationStatus] = useState('not_started')
-
-  // Consultation entry now lives on its own page. Arriving here with
-  // ?startConsultation=true (e.g. from the waiting room's "Commencer") is a
-  // legacy entry point — bounce straight to it instead of rendering a tab
-  // that no longer exists.
-  useEffect(() => {
-    if (startConsultation && visitId) {
-      navigate(`/consultation/${visitId}`, { replace: true })
-    }
-  }, [startConsultation, visitId, navigate])
+  const [consultationStatus, setConsultationStatus] = useState(startConsultation ? 'in_progress' : 'not_started')
   const [showPatientSidebar, setShowPatientSidebar] = useState(false)
   const [timerSeconds, setTimerSeconds] = useState(0)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showModal, setShowModal] = useState(searchParams.get('action') || null)
   const [showSuccess, setShowSuccess] = useState(null)
-  const [showEndConfirmModal, setShowEndConfirmModal] = useState(false)
-  const [saveStatus, setSaveStatus] = useState('saved')
+  const [showConsultationModal, setShowConsultationModal] = useState(startConsultation)
 
   // --- Form States ---
   const [prescriptionForm, setPrescriptionForm] = useState({ medications: '', notes: '' })
@@ -852,23 +685,12 @@ export default function PatientWorkspace() {
   const [sessionActes, setSessionActes] = useState([])
 
   // --- Consultation Notes State ---
-  const [consultationReason, setConsultationReason] = useState('')
-  const [symptomsHistory, setSymptomsHistory] = useState('')
-  const [vitals, setVitals] = useState({
-    bloodPressureSystolic: '',
-    bloodPressureDiastolic: '',
-    heartRate: '',
-    temperature: '',
-    respiratoryRate: '',
-    oxygenSaturation: '',
-    weight: '',
-    height: '',
-  })
-  const [subjectiveNote, setSubjectiveNote] = useState('')
-  const [objectiveNote, setObjectiveNote] = useState('')
-  const [clinicalExam, setClinicalExam] = useState('')
-  const [assessmentNote, setAssessmentNote] = useState('')
-  const [planNote, setPlanNote] = useState('')
+  const [note, setNote] = useState(() => normalizeNote({}))
+  const [reviewRequested, setReviewRequested] = useState(false)
+  const queryClient = useQueryClient()
+  // Existing billing rule: acts total, otherwise the default consultation fee.
+  const actesTotal = sessionActes.reduce((sum, a) => sum + a.montant, 0)
+  const billingAmount = actesTotal > 0 ? actesTotal : 300
 
   // --- Query Patient Data ---
   const { data: patient, isLoading: loadingPatient, isError: patientLoadFailed, error: patientLoadError, refetch: retryPatientLoad } = useQuery({
@@ -917,64 +739,32 @@ export default function PatientWorkspace() {
     }))
   }, [])
 
-  // --- Sauvegarde auto locale (peut être remplacée par un appel API) ---
-  const handleAutoSaveField = useCallback(async (fieldKey, value) => {
-    throw new Error('Local consultation storage is disabled in production.')
-
-    try {
-      const key = `mm_autosave_${patientIdParam || 'demo'}_${fieldKey}`
-      localStorage.setItem(key, JSON.stringify({ value, savedAt: Date.now() }))
-    } catch (_err) {
-      // ignore storage errors
-    }
-  }, [patientIdParam])
-
   // --- Handlers ---
-  // Consultation entry (vitals, exam, workup, notes) lives on its own page
-  // (ConsultationWorkspace, /consultation/:visitId) rather than as tabs here.
-  // If the patient was opened without an active visit (e.g. from the patient
-  // list rather than the waiting room), create one first.
-  const [startingConsultation, setStartingConsultation] = useState(false)
-  const handleStartConsultation = useCallback(async () => {
-    if (visitId) {
-      navigate(`/consultation/${visitId}`)
-      return
-    }
-    setStartingConsultation(true)
-    try {
-      const visit = await createWalkInVisit(patientIdParam, profile?.id)
-      navigate(`/consultation/${visit.id}`)
-    } catch (err) {
-      notify({ title: 'Erreur', description: err.message || 'Impossible de démarrer la consultation.', tone: 'error' })
-    } finally {
-      setStartingConsultation(false)
-    }
-  }, [visitId, patientIdParam, profile?.id, navigate, notify])
+  const handleStartConsultation = useCallback(() => {
+    setConsultationStatus('in_progress')
+    setReviewRequested(false)
+    setShowConsultationModal(true)
+  }, [])
 
   const handleEndConsultation = useCallback(() => {
-    setShowEndConfirmModal(true)
+    setReviewRequested(true)
+    setShowConsultationModal(true)
   }, [])
 
   const handleConfirmEndConsultation = useCallback(() => {
-    setShowEndConfirmModal(false)
     setConsultationStatus('completed')
     setTimerSeconds(0)
+    queryClient.invalidateQueries({ queryKey: ['encounters', patientIdParam] })
+    queryClient.invalidateQueries({ queryKey: ['encounter-draft', patientIdParam] })
+    queryClient.invalidateQueries({ queryKey: ['consult-ctx-vitals', patientIdParam] })
     if (visitId) {
-      const totalActes = sessionActes.reduce((sum, a) => sum + a.montant, 0)
-      updateVisitStatus(visitId, VISIT_STATUSES.BILLING, {
-        amount: totalActes > 0 ? totalActes : 300, // Use actes total or default 300
-        sessionActes: sessionActes // Pass actes data for secretary view
-      })
+      updateVisitStatus(visitId, VISIT_STATUSES.BILLING, { amount: billingAmount, sessionActes })
       notify({ title: 'Consultation terminée', description: 'Le patient a été envoyé à la caisse', tone: 'success' })
     } else {
-      // FIXME: consultation démarrée sans visitId (ex: depuis DossierPatient ?startConsultation=true).
-      // updateVisitStatus est ignoré — les actes ne sont pas transmis à la caisse.
-      // À corriger quand la création de visite à la volée sera implémentée.
-      console.warn('[PatientWorkspace] handleConfirmEndConsultation: visitId absent — updateVisitStatus ignoré, actes non transmis à la caisse.')
       notify({ title: 'Consultation enregistrée', description: 'Notes sauvegardées (aucun acte transmis à la caisse — visitId absent)', tone: 'info' })
     }
     navigate('/dashboard')
-  }, [visitId, updateVisitStatus, notify, navigate, sessionActes])
+  }, [visitId, updateVisitStatus, notify, navigate, sessionActes, queryClient, patientIdParam, billingAmount])
 
   const handleSavePrescription = useCallback(() => {
     setShowModal(null)
@@ -1013,46 +803,33 @@ export default function PatientWorkspace() {
     setActeForm({ name: '', description: '', montant: '' })
   }, [acteForm])
 
-  const handleManualSave = useCallback(async () => {
-    setSaveStatus('saving')
-    try {
-      await Promise.all([
-        handleAutoSaveField('consultation_reason', consultationReason),
-        handleAutoSaveField('symptoms_history', symptomsHistory),
-        handleAutoSaveField('clinical_exam', clinicalExam),
-        handleAutoSaveField('assessment', assessmentNote),
-        handleAutoSaveField('plan', planNote),
-        handleAutoSaveField('vitals', JSON.stringify(vitals)),
-      ])
-      setSaveStatus('saved')
-      notify({ title: 'Enregistré', description: 'Les données de la consultation ont été sauvegardées.', tone: 'success' })
-    } catch (_err) {
-      setSaveStatus('error')
-      notify({ title: 'Erreur', description: 'Impossible de sauvegarder.', tone: 'error' })
-    }
-  }, [consultationReason, symptomsHistory, clinicalExam, assessmentNote, planNote, vitals, handleAutoSaveField, notify])
+  const encountersQ = useQuery({
+    queryKey: ['encounters', patientIdParam],
+    queryFn: () => listCompletedEncounters(patientIdParam),
+    enabled: Boolean(patientIdParam),
+  })
+  const openDraftQ = useQuery({
+    queryKey: ['encounter-draft', patientIdParam],
+    queryFn: () => getOpenDraft(patientIdParam),
+    enabled: Boolean(patientIdParam) && !showConsultationModal,
+  })
+  const timelineEvents = useMemo(() => (encountersQ.data || []).map(encounterToEvent), [encountersQ.data])
+
+  const draft = useEncounterDraft({
+    patientId: patientIdParam,
+    visitId,
+    active: showConsultationModal,
+    note,
+    onHydrate: setNote,
+  })
 
   // --- Derived Values ---
   const age = patient ? calcAge(patient.date_naissance) : null
   const initials = patient ? `${patient.prenom?.[0] || ''}${patient.nom?.[0] || ''}`.toUpperCase() : ''
-  const bmi = calcBMI(vitals.weight, vitals.height)
   const chronicDisease = patient?.antecedents || '—'
   const currentTreatment = '—'
   const emergencyContact = patient?.contact_urgence || '—'
   const isConsultationActive = consultationStatus === 'in_progress'
-
-  // --- isDirty: true si au moins un champ de consultation contient des données non sauvegardées ---
-  const isDirty = useMemo(() => {
-    if (consultationStatus !== 'in_progress') return false
-    return (
-      consultationReason.trim() !== '' ||
-      symptomsHistory.trim() !== '' ||
-      clinicalExam.trim() !== '' ||
-      assessmentNote.trim() !== '' ||
-      planNote.trim() !== '' ||
-      Object.values(vitals).some(v => v !== '')
-    )
-  }, [consultationStatus, consultationReason, symptomsHistory, clinicalExam, assessmentNote, planNote, vitals])
 
   // --- Blocage navigation interne (React Router useBlocker) ---
   // Bloque dès qu'une consultation est active, indépendamment de isDirty
@@ -1211,15 +988,10 @@ export default function PatientWorkspace() {
                 
                 <button
                   onClick={handleStartConsultation}
-                  disabled={startingConsultation}
-                  className="h-10 px-5 rounded-[0.625rem] font-bold text-[13px] bg-[#2563eb] text-white border-2 border-[#60a5fa] hover:bg-[#1e40af] hover:border-[#1e3a8a] transition-all flex items-center gap-2 shadow-[0_3px_10px_rgba(37,99,235,0.25)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:pointer-events-none"
+                  className="h-10 px-5 rounded-[0.625rem] font-bold text-[13px] bg-[#2563eb] text-white border-2 border-[#60a5fa] hover:bg-[#1e40af] hover:border-[#1e3a8a] transition-all flex items-center gap-2 shadow-[0_3px_10px_rgba(37,99,235,0.25)] hover:-translate-y-0.5 active:translate-y-0"
                 >
-                  {startingConsultation ? (
-                    <Loader2 className="w-4 h-4 text-white animate-spin" />
-                  ) : (
-                    <Plus className="w-4 h-4 text-white" />
-                  )}
-                  Commencer
+                  <Save className="w-4 h-4 text-white" />
+                  Enregistrer
                 </button>
               </>
             )}
@@ -1307,184 +1079,6 @@ export default function PatientWorkspace() {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.25 }}
               >
-                {/* --- Constants & Motif Content --- */}
-                {activeTab === 'Constantes & Motif' && (
-                  <div className="space-y-5">
-                    {/* Consultation Reason & Symptoms */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <QuickNoteField
-                        cardId="consultation-reason"
-                        activeCardId={activeCardId}
-                        enterFocusMode={enterFocusMode}
-                        exitFocusMode={exitFocusMode}
-                        title="Motif de consultation"
-                        placeholder="Motif de la visite — ex. céphalées persistantes depuis 5 jours, plus marquées le matin..."
-                        icon={Stethoscope}
-                        value={consultationReason}
-                        onChange={(value) => setConsultationReason(value)}
-                        autoFocus={consultationStatus === 'in_progress'}
-                        patientConsultations={patientConsultations}
-                        onSave={(v) => handleAutoSaveField('consultation_reason', v)}
-                      />
-                      <QuickNoteField
-                        cardId="symptoms-history"
-                        activeCardId={activeCardId}
-                        enterFocusMode={enterFocusMode}
-                        exitFocusMode={exitFocusMode}
-                        title="Symptômes / Histoire"
-                        placeholder="Histoire de la maladie, symptômes, contexte..."
-                        icon={Activity}
-                        value={symptomsHistory}
-                        onChange={(value) => setSymptomsHistory(value)}
-                        patientConsultations={patientConsultations}
-                        onSave={(v) => handleAutoSaveField('symptoms_history', v)}
-                      />
-                    </div>
-                    
-                    {/* Vitals Section - Target Grid Style */}
-                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <div className="flex items-start justify-between mb-5">
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50">
-                            <Heart className="w-4.5 h-4.5 text-blue-600" />
-                          </div>
-                          <h3 className="text-[15.5px] font-bold text-slate-900">Constantes vitales</h3>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-slate-400">
-                          <Info size={14} />
-                          <span className="text-[12px] font-medium">Valeurs anormales signalées</span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                        <BloodPressureCard
-                          systolic={vitals.bloodPressureSystolic}
-                          diastolic={vitals.bloodPressureDiastolic}
-                          onSystolicChange={(e) => setVitals({...vitals, bloodPressureSystolic: e.target.value})}
-                          onDiastolicChange={(e) => setVitals({...vitals, bloodPressureDiastolic: e.target.value})}
-                        />
-                        <VitalCard
-                          icon={Wind}
-                          label="Fréq. cardiaque"
-                          unit="bpm"
-                          value={vitals.heartRate}
-                          onChange={(e) => setVitals({...vitals, heartRate: e.target.value})}
-                          placeholder="72"
-                        />
-                        <VitalCard
-                          icon={Thermometer}
-                          label="Température"
-                          unit="°C"
-                          value={vitals.temperature}
-                          onChange={(e) => setVitals({...vitals, temperature: e.target.value})}
-                          placeholder="37"
-                        />
-                        <VitalCard
-                          icon={Scale}
-                          label="Poids"
-                          unit="kg"
-                          value={vitals.weight}
-                          onChange={(e) => setVitals({...vitals, weight: e.target.value})}
-                          placeholder="70"
-                        />
-                        <VitalCard
-                          icon={Ruler}
-                          label="Taille"
-                          unit="cm"
-                          value={vitals.height}
-                          onChange={(e) => setVitals({...vitals, height: e.target.value})}
-                          placeholder="170"
-                        />
-                        <VitalCard
-                          icon={Droplets}
-                          label="SpO₂"
-                          unit="%"
-                          value={vitals.oxygenSaturation}
-                          onChange={(e) => setVitals({...vitals, oxygenSaturation: e.target.value})}
-                          placeholder="98"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* --- Exam Content --- */}
-                {activeTab === 'Examen' && (
-                  <div className="space-y-5">
-                    <QuickNoteField
-                      cardId="clinical-exam"
-                      activeCardId={activeCardId}
-                      enterFocusMode={enterFocusMode}
-                      exitFocusMode={exitFocusMode}
-                      title="Examen clinique"
-                      placeholder="Observations de l'examen physique..."
-                      icon={Stethoscope}
-                      value={clinicalExam}
-                      onChange={(value) => setClinicalExam(value)}
-                      patientConsultations={patientConsultations}
-                      onSave={(v) => handleAutoSaveField('clinical_exam', v)}
-                    />
-                  </div>
-                )}
-
-                {/* --- Bilan Content --- */}
-                {activeTab === 'Bilan' && (
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <QuickNoteField
-                        cardId="assessment"
-                        activeCardId={activeCardId}
-                        enterFocusMode={enterFocusMode}
-                        exitFocusMode={exitFocusMode}
-                        title="Évaluation / Conclusion"
-                        placeholder="Votre diagnostic et évaluation..."
-                        icon={Brain}
-                        value={assessmentNote}
-                        onChange={(value) => setAssessmentNote(value)}
-                        patientConsultations={patientConsultations}
-                        onSave={(v) => handleAutoSaveField('assessment', v)}
-                      />
-                      <QuickNoteField
-                        cardId="plan"
-                        activeCardId={activeCardId}
-                        enterFocusMode={enterFocusMode}
-                        exitFocusMode={exitFocusMode}
-                        title="Plan de soins"
-                        placeholder="Plan de traitement et suivi..."
-                        icon={ListChecks}
-                        value={planNote}
-                        onChange={(value) => setPlanNote(value)}
-                        patientConsultations={patientConsultations}
-                        onSave={(v) => handleAutoSaveField('plan', v)}
-                      />
-                    </div>
-                    {false && (
-                      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <div className="flex items-center gap-2 mb-4">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50">
-                            <Pill className="w-4.5 h-4.5 text-blue-600" />
-                          </div>
-                          <h3 className="text-[15.5px] font-bold text-slate-900">Traitements en cours</h3>
-                        </div>
-                        <div className="space-y-2">
-                          {MOCK_MEDICATIONS.map((med) => (
-                            <div key={med.id} className="flex items-center justify-between p-3.5 bg-slate-50 rounded-lg border border-slate-200">
-                              <div>
-                                <p className="text-[13px] font-semibold text-slate-800">{med.name}</p>
-                                <p className="text-[11.5px] text-slate-500 mt-0.5">{med.dosage}</p>
-                              </div>
-                              {med.compliance === 'good' ? (
-                                <Chip color="emerald">Bon suivi</Chip>
-                              ) : (
-                                <Chip color="amber">À vérifier</Chip>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* --- History Content --- */}
                 {activeTab === 'Historique' && (
                   <div className="space-y-5">
@@ -1499,21 +1093,22 @@ export default function PatientWorkspace() {
                         </div>
                         <button
                           onClick={handleStartConsultation}
-                          disabled={startingConsultation}
-                          className="h-11 px-5 rounded-[0.625rem] font-bold text-[14px] bg-black text-white hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm hover:-translate-y-0.5 active:translate-y-0 flex-shrink-0 disabled:opacity-60 disabled:pointer-events-none"
+                          className="h-11 px-5 rounded-[0.625rem] font-bold text-[14px] bg-black text-white hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm hover:-translate-y-0.5 active:translate-y-0 flex-shrink-0"
                         >
-                          {startingConsultation ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Plus className="w-4 h-4" />
-                          )}
+                          <Plus className="w-4 h-4" />
                           Nouvelle consultation
                         </button>
                       </div>
+                    {openDraftQ.data && !showConsultationModal && (
+                      <div className="flex items-center justify-between gap-3 rounded-[0.625rem] border border-amber-200 bg-amber-50 px-4 py-3">
+                        <p className="text-[13.5px] text-amber-900"><span className="font-bold">Consultation en cours</span> · brouillon enregistré à {new Date(openDraftQ.data.updated_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                        <button onClick={handleStartConsultation} className="h-9 rounded-lg bg-black px-4 text-[13px] font-bold text-white hover:bg-slate-800">Reprendre</button>
+                      </div>
+                    )}
                     {/* Timeline */}
-                    {TIMELINE_EVENTS.length > 0 ? (
+                    {timelineEvents.length > 0 ? (
                       <div className="relative w-full pt-1 before:absolute before:left-[9px] before:top-4 before:bottom-4 before:w-px before:bg-slate-200">
-                        {TIMELINE_EVENTS.map((event, index) => (
+                        {timelineEvents.map((event, index) => (
                           <TimelineEvent
                             key={event.id}
                             event={event}
@@ -1525,8 +1120,8 @@ export default function PatientWorkspace() {
                     ) : (
                       <EmptyState
                         icon={CalendarClock}
-                        title="Aucun événement trouvé"
-                        description="Ce patient n'a pas encore de parcours de soins"
+                        title={encountersQ.isLoading ? 'Chargement…' : encountersQ.isError ? 'Historique indisponible' : 'Aucune consultation enregistrée'}
+                        description={encountersQ.isError ? 'Réessayez dans un instant.' : 'Les consultations terminées apparaîtront ici.'}
                       />
                     )}
                   </div>
@@ -1557,49 +1152,26 @@ export default function PatientWorkspace() {
       </main>
 
       {/* --- Modals --- */}
+
+      <ConsultationSheet
+        open={showConsultationModal}
+        onClose={() => { setShowConsultationModal(false); setReviewRequested(false); openDraftQ.refetch() }}
+        patient={patient}
+        age={age}
+        patientId={patientIdParam}
+        note={note}
+        setNote={setNote}
+        draft={draft}
+        acts={sessionActes}
+        startInReview={reviewRequested}
+        onAddActe={() => setShowModal('addActe')}
+        onOpenContext={() => setShowPatientSidebar(true)}
+        onCompleted={() => { setShowConsultationModal(false); setReviewRequested(false); handleConfirmEndConsultation() }}
+        onDiscarded={() => { setNote(normalizeNote({})); setConsultationStatus('not_started'); setShowConsultationModal(false); setReviewRequested(false); openDraftQ.refetch() }}
+        patientConsultations={patientConsultations}
+      />
+
       <AnimatePresence>
-        {showEndConfirmModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowEndConfirmModal(false)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 12 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="relative w-full max-w-md bg-white rounded-[21px] shadow-[0_12px_48px_rgba(0,0,0,0.12)] overflow-hidden"
-            >
-              <div className="p-6">
-                <div className="flex items-center justify-center w-14 h-14 bg-red-50 rounded-full mx-auto mb-4">
-                  <AlertTriangle className="w-7 h-7 text-red-600" />
-                </div>
-                <h2 className="text-lg font-bold text-slate-900 text-center mb-2">Terminer la consultation ?</h2>
-                <p className="text-sm text-slate-600 text-center mb-6">
-                  Le patient sera envoyé à la caisse pour paiement.
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowEndConfirmModal(false)}
-                    className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-[#e2e8f0] rounded-[12px] hover:bg-slate-50 hover:border-slate-400 transition-all"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    onClick={handleConfirmEndConsultation}
-                    className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-[#2563eb] border border-[#2563eb] rounded-[12px] hover:bg-blue-700 hover:border-blue-700 transition-all shadow-[0_2px_8px_rgba(37,99,235,0.2)]"
-                  >
-                    Terminer
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
         {selectedEvent && (
           <EventDetailsModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
         )}

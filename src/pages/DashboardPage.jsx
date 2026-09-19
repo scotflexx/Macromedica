@@ -1547,8 +1547,9 @@ export default function DashboardPage() {
         ))
         // Get patient ID from rdv
         const patientId = rdv.patient_id || rdv.patients?.id
-        // Navigate to unified workspace with visitId and startConsultation flag
-        navigate(`/patient-workspace/${patientId}?visitId=${rdv.id}&startConsultation=true`)
+        // Land on the patient workspace (Historique first); the doctor opens the
+        // consultation sheet from "+ Nouvelle consultation".
+        navigate(`/patient-workspace/${patientId}?visitId=${rdv.id}`)
         // We can release the busy state after navigation has been triggered
         setTimeout(() => setBusy(rdv.id, false), 100)
         break
