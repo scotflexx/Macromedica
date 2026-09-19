@@ -90,7 +90,7 @@ function SectionHeading({ id, index, title, refEl, children }) {
 }
 
 export default function ConsultationSheet({
-  open, onClose, patient, age, patientId, note, setNote, draft, acts = [],
+  open, onClose, patient, age, patientId, note, setNote, draft, acts = [], billingAmount = 0, visitLinked = false,
   onAddActe, onCompleted, onDiscarded, onOpenContext, patientConsultations, startInReview = false,
 }) {
   const [mode, setMode] = useState('note')
@@ -181,7 +181,7 @@ export default function ConsultationSheet({
     inFlight.current = true
     setBusy(true); setActionError(null)
     try {
-      const res = await draft.complete()
+      const res = await draft.complete({ billingAmount: visitLinked ? billingAmount : null, billingType: 'cash' })
       setResult(res); setShowFinalize(false); setMode('done')
     } catch (e) {
       setActionError(e?.message || 'Impossible de terminer la consultation.')
@@ -342,6 +342,7 @@ export default function ConsultationSheet({
 
       {showFinalize && (
         <FinalizeDialog note={note} blockers={blockers} allergyHits={allergyHits} submitting={busy} error={actionError}
+          handoffText={visitLinked ? `Le patient sera envoyé à la caisse (montant proposé : ${billingAmount.toLocaleString('fr-FR')} MAD).` : 'Consultation non liée à une visite : enregistrée au dossier, sans passage en caisse.'}
           onCancel={() => setShowFinalize(false)} onConfirm={finalize} />
       )}
       {showDiscard && <DiscardDialog busy={busy} error={actionError} onCancel={() => setShowDiscard(false)} onConfirm={discard} />}

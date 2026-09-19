@@ -89,6 +89,7 @@ const ERROR_MAP = [
   ['version conflict', 'conflict', 'Cette consultation a été modifiée dans une autre fenêtre. Rechargez la page pour récupérer la dernière version.'],
   ['motif required', 'motif_required', 'Le motif de consultation est obligatoire.'],
   ['invalid vitals', 'invalid_vitals', 'Une constante vitale est invalide ou hors plage. Vérifiez les valeurs saisies.'],
+  ['invalid billing', 'invalid_billing', 'Le montant ou le type de facturation est invalide.'],
   ['not editable', 'not_editable', 'Cette consultation est déjà terminée ou abandonnée.'],
   ['not authorized', 'forbidden', 'Vous n\'avez pas l\'autorisation d\'effectuer cette action.'],
   ['not authenticated', 'forbidden', 'Votre session a expiré. Reconnectez-vous.'],
@@ -132,8 +133,12 @@ export const openEncounter = (patientId, visitId = null) =>
 export const saveEncounter = (id, note, expectedVersion) =>
   rpc('mm_save_encounter', { p_id: id, p_note: note, p_expected_version: expectedVersion })
 
-export const completeEncounter = (id, note, expectedVersion) =>
-  rpc('mm_complete_encounter', { p_id: id, p_note: note, p_expected_version: expectedVersion })
+// Returns { encounter, handoff: 'billing' | 'completed' | 'none', visit_id }.
+export const completeEncounter = (id, note, expectedVersion, { billingAmount = null, billingType = 'cash' } = {}) =>
+  rpc('mm_complete_encounter', {
+    p_id: id, p_note: note, p_expected_version: expectedVersion,
+    p_billing_amount: billingAmount, p_billing_type: billingType,
+  })
 
 export const voidEncounter = (id) => rpc('mm_void_encounter', { p_id: id })
 

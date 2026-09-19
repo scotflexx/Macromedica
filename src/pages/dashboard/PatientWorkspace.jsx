@@ -751,18 +751,30 @@ export default function PatientWorkspace() {
     setShowConsultationModal(true)
   }, [])
 
-  const handleConfirmEndConsultation = useCallback(() => {
-    setConsultationStatus('completed')
+  const handleConfirmEndConsultation = useCallback((result) => {
+    const handoff = result?.handoff || 'none'
     setTimerSeconds(0)
     queryClient.invalidateQueries({ queryKey: ['encounters', patientIdParam] })
     queryClient.invalidateQueries({ queryKey: ['encounter-draft', patientIdParam] })
     queryClient.invalidateQueries({ queryKey: ['consult-ctx-vitals', patientIdParam] })
-    if (visitId) {
-      updateVisitStatus(visitId, VISIT_STATUSES.BILLING, { amount: billingAmount, sessionActes })
-      notify({ title: 'Consultation terminée', description: 'Le patient a été envoyé à la caisse', tone: 'success' })
-    } else {
-      notify({ title: 'Consultation enregistrée', description: 'Notes sauvegardées (aucun acte transmis à la caisse — visitId absent)', tone: 'info' })
+    if (handoff === 'none') {
+      setConsultationStatus('not_started')
+      setNote(normalizeNote({}))
+      notify({ title: 'Consultation enregistrée', description: 'Ajoutée à l\'historique du patient.', tone: 'success' })
+      return
     }
+    setConsultationStatus('completed')
+    if (visitId) {
+      updateVisitStatus(visitId, handoff === 'billing' ? VISIT_STATUSES.BILLING : VISIT_STATUSES.COMPLETED, {
+        amount: handoff === 'billing' ? billingAmount : 0,
+        sessionActes,
+      })
+    }
+    notify({
+      title: 'Consultation terminée',
+      description: handoff === 'billing' ? 'Le patient a été envoyé à la caisse.' : 'Aucun paiement requis.',
+      tone: 'success',
+    })
     navigate('/dashboard')
   }, [visitId, updateVisitStatus, notify, navigate, sessionActes, queryClient, patientIdParam, billingAmount])
 
@@ -1163,10 +1175,12 @@ export default function PatientWorkspace() {
         setNote={setNote}
         draft={draft}
         acts={sessionActes}
+        billingAmount={billingAmount}
+        visitLinked={Boolean(visitId)}
         startInReview={reviewRequested}
         onAddActe={() => setShowModal('addActe')}
         onOpenContext={() => setShowPatientSidebar(true)}
-        onCompleted={() => { setShowConsultationModal(false); setReviewRequested(false); handleConfirmEndConsultation() }}
+        onCompleted={(result) => { setShowConsultationModal(false); setReviewRequested(false); handleConfirmEndConsultation(result) }}
         onDiscarded={() => { setNote(normalizeNote({})); setConsultationStatus('not_started'); setShowConsultationModal(false); setReviewRequested(false); openDraftQ.refetch() }}
         patientConsultations={patientConsultations}
       />

@@ -98,10 +98,10 @@ export function useEncounterDraft({ patientId, visitId, active, note, onHydrate 
     await persist()
   }, [persist])
 
-  const complete = useCallback(async () => {
+  const complete = useCallback(async (billing) => {
     if (!enc.current.id) throw new Error('not ready')
     await flush()
-    const result = await completeEncounter(enc.current.id, finalizeNote(noteRef.current), enc.current.version)
+    const result = await completeEncounter(enc.current.id, finalizeNote(noteRef.current), enc.current.version, billing)
     enc.current = { id: null, version: null }
     hydrated.current = false
     setState({ status: 'completed', error: null, savedAt: new Date() })
