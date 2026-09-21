@@ -501,7 +501,6 @@ export default function TasksPage() {
       />
 
       {/* ── Create task modal ──────────────────────────────────────────── */}
->>>>>>> friend/feat/patient-workspace-header
       <AddTaskModal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
@@ -532,6 +531,6 @@ export default function TasksPage() {
         patients={patients || []}
         currentUser={user || profile}
       />
-    </>
+    </div>
   )
 }

@@ -225,8 +225,6 @@ export function AppProvider({ children }) {
       setPermissionsLoaded(true)
     }
   }, [])
-    }
-  }, [])
 
   // Handle a valid session — set user + profile + authenticated
   const handleSession = useCallback(async (session) => {
