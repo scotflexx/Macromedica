@@ -31,18 +31,48 @@ export async function getDoctors(clinicId) {
 // Callers must pass AppContext's canonical clinicId, which is backfilled to match
 // cabinet_id for legacy profiles by the Phase 4 migration.
 
+// The amount due lives on the visit's payment row (written by mm_complete_encounter
+// from the consultation's actes), not on `visits`. Surface it as billing_amount /
+// remaining_balance so the cashier queue shows the real figure instead of a default.
+function withBillingAmount(visit) {
+  const { payments, ...rest } = visit
+  const active = (payments || []).filter((p) => ['pending', 'paid', 'waived'].includes(p.status))
+  if (active.length === 0) return rest
+  // amount = billed, amount_paid = collected so far (a short payment leaves the row pending).
+  const amount = active.reduce((sum, p) => sum + Number(p.amount || 0), 0)
+  const paid = active.reduce((sum, p) => sum + Number(p.amount_paid || 0), 0)
+  return { ...rest, billing_amount: amount, total_paid: paid, remaining_balance: Math.max(0, amount - paid) }
+}
+
 export async function getTodayVisits(clinicId) {
   const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Africa/Casablanca' })
   const { data, error } = await supabase
     .from('visits')
-    .select(VISIT_SELECT)
+    .select(`${VISIT_SELECT}, payments(id, amount, amount_paid, status)`)
     .eq('clinic_id', clinicId)
     .eq('queue_date', today)
     .in('status', ['waiting', 'called', 'consultation', 'billing', 'completed'])
     .order('queue_number', { ascending: true, nullsFirst: false })
 
   if (error) throw error
-  return data || []
+  return (data || []).map(withBillingAmount)
+}
+
+// Visits from an EARLIER day that are still in billing with money owing. They are not part of
+// the live queue (getTodayVisits); the dashboard shows them in Historique, where they can be
+// collected. Carries billing_amount / total_paid / remaining_balance like getTodayVisits.
+export async function getOutstandingBalanceVisits(clinicId) {
+  const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Africa/Casablanca' })
+  const { data, error } = await supabase
+    .from('visits')
+    .select(`${VISIT_SELECT}, payments(id, amount, amount_paid, status)`)
+    .eq('clinic_id', clinicId)
+    .eq('status', 'billing')
+    .lt('queue_date', today)
+    .order('queue_date', { ascending: true })
+
+  if (error) throw error
+  return (data || []).map(withBillingAmount).filter((visit) => Number(visit.remaining_balance) > 0)
 }
 
 export async function getDoctorQueue(clinicId, doctorId) {
@@ -168,11 +198,33 @@ export async function getBillingQueue(clinicId) {
   return (data || []).filter((payment) => payment.visits?.status === 'billing')
 }
 
-export async function processVisitPayment(visitId, method, amount) {
+// Authoritative balance of a visit's open payment, straight from the database (the queue
+// card's figures can be stale). Returns null when the visit has no pending payment.
+export async function getVisitBillingBalance(visitId) {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('amount, amount_paid')
+    .eq('visit_id', visitId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+  const billed = Number(data.amount) || 0
+  const collected = Number(data.amount_paid) || 0
+  return { billed, collected, remaining: Math.max(0, billed - collected) }
+}
+
+// `partial` must be true when collecting less than the remaining balance; the RPC rejects a
+// short payment that is not explicitly flagged (no silent default can close a visit short).
+export async function processVisitPayment(visitId, method, amount, { partial = false } = {}) {
   const { data, error } = await supabase.rpc('process_visit_payment', {
     p_visit_id: visitId,
     p_method: method,
     p_amount: Number(amount || 0),
+    p_partial: partial,
   })
 
   if (error) throw error
@@ -282,18 +334,26 @@ function dateKeyInTz(iso) {
 
 function mapPaymentToRecord(payment) {
   const patient = payment.patients || payment.visits?.patients
-  return {
-    id: payment.id,
+  const billed = Number(payment.amount || payment.consultations?.billing_amount || 0)
+  const collected = Number(payment.amount_paid || 0)
+  const base = {
     visit_id: payment.visit_id,
     consultation_id: payment.consultation_id,
     patients: patient,
-    montant: Number(payment.amount || payment.consultations?.billing_amount || 0),
-    status: payment.status === 'paid' ? 'paid' : 'pending',
     paymentMethod: payment.method,
-    created_at: payment.paid_at || payment.created_at,
     notes: payment.consultations?.notes || '',
     source: 'payment',
   }
+  if (payment.status === 'paid') {
+    return [{ ...base, id: payment.id, montant: billed, status: 'paid', created_at: payment.paid_at || payment.created_at }]
+  }
+  // Short-paid: the collected part counts as revenue, only the balance stays pending.
+  const records = []
+  if (collected > 0) {
+    records.push({ ...base, id: `${payment.id}:paid`, montant: collected, status: 'paid', created_at: payment.paid_at || payment.created_at })
+  }
+  records.push({ ...base, id: payment.id, montant: Math.max(0, billed - collected), status: 'pending', created_at: payment.created_at })
+  return records
 }
 
 function mapConsultationToRecord(consultation) {
@@ -335,7 +395,7 @@ export async function getBillingRecords(clinicId) {
     (paymentsRes.data || []).map((p) => p.consultation_id).filter(Boolean)
   )
 
-  const paymentRecords = (paymentsRes.data || []).map(mapPaymentToRecord)
+  const paymentRecords = (paymentsRes.data || []).flatMap(mapPaymentToRecord)
   const standaloneRecords = (consultationsRes.data || [])
     .filter((c) => !paymentConsultIds.has(c.id))
     .map(mapConsultationToRecord)

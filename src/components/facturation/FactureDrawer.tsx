@@ -1,248 +1,262 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useFacturationStore } from './store';
-import { useFacturationMutations, useFacturesQuery } from './queries';
-import { factureNet, facturePaye, factureReste, factureHT, factureTVA, ligneTotal, Mode } from './data';
-import { dh, fmtDate, fmtDateLong, joursRetard } from './format';
-import { StatutBadge } from './ui';
-import { praticiens, assureurs } from './data';
-import { X, Trash2, Printer, CheckCircle, Ban, CreditCard, AlertCircle } from 'lucide-react';
+import { useFacturesQuery, useFilterOptions } from './queries';
+import { Facture, facturePaye, factureReste } from './data';
+import { dh, fmtDateLong, joursRetard } from './format';
+import { Card, StatutBadge } from './ui';
+import Badge from '../common/Badge';
+import Button from '../common/Button';
+import { X, Printer, CreditCard, AlertCircle, ArrowLeft } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { EncaisserModal } from './EncaisserModal';
+import { useFacturePayment } from './EncaisserModal';
+import { PaymentBody, PaymentFooter, PaymentDone } from '../common/PaymentModal';
 
-export function FactureDrawer() {
-  const { ui, setFactureOuverteId, showToast } = useFacturationStore();
-  const { data: factures = [] } = useFacturesQuery();
-  const { cancelFacture, removePaiement, emitFacture } = useFacturationMutations();
-  const [isEncaisserOpen, setIsEncaisserOpen] = useState(false);
-  
-  const factureId = ui.factureOuverteId;
-  const facture = factures.find(f => f.id === factureId);
+const LABEL = 'text-xs font-semibold text-slate-400 uppercase tracking-wide';
 
-  // Keyboard escape
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (isEncaisserOpen) setIsEncaisserOpen(false);
-        else setFactureOuverteId(null);
-      }
-    };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [isEncaisserOpen, setFactureOuverteId]);
+interface FactureDetailProps {
+  facture: Facture;
+  praticienNom?: string;
+  onClose: () => void;
+  onPrint: () => void;
+  onEncaisser: () => void;
+}
 
-  if (!facture) return null;
-
-  const handleClose = () => setFactureOuverteId(null);
-  
-  const praticien = praticiens.find(p => p.id === facture.praticienId);
-  const assureur = assureurs.find(a => a.id === facture.assureurId);
-
-  const net = factureNet(facture);
+// Presentational modal: Montants (reste à payer first), then the facture details, then the
+// payments list. It only takes the height its content needs, so the footer sits right below.
+export function FactureDetail({ facture, praticienNom, onClose, onPrint, onEncaisser }: FactureDetailProps) {
   const paye = facturePaye(facture);
   const reste = factureReste(facture);
   const retard = joursRetard(facture.dateEcheance);
   const isLate = facture.statut === 'en_retard';
+  const paiements = [...facture.paiements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <>
-      {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 transition-opacity print:hidden"
-        onClick={handleClose}
-      />
-      
-      {/* Drawer */}
-      <div className="fixed inset-y-0 right-0 w-full max-w-2xl bg-white shadow-2xl z-[60] flex flex-col animate-in slide-in-from-right duration-300 print:fixed print:inset-0 print:w-full print:max-w-none print:shadow-none print:z-[9999] print:bg-white">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 print:hidden">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-slate-900">{facture.numero}</h2>
-            <StatutBadge statut={facture.statut} />
-          </div>
-          <button 
-            onClick={handleClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.97, y: 8 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+      onClick={(e) => e.stopPropagation()}
+      className="flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl print:max-h-none print:max-w-none print:shadow-none"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4 print:hidden">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-bold text-slate-900">{facture.numero}</h2>
+          <StatutBadge statut={facture.statut} />
         </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-          
-          {/* Infos */}
-          <div className="grid grid-cols-2 gap-6 bg-slate-50 rounded-xl p-5 border border-slate-100">
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Patient</p>
-              <p className="text-sm font-bold text-slate-900 mt-1">{facture.patientNom}</p>
-              <p className="text-xs text-slate-500">{facture.patientRef}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Émission</p>
-              <p className="text-sm font-medium text-slate-900 mt-1">{fmtDateLong(facture.dateEmission)}</p>
-              {isLate ? (
-                <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-0.5">
-                  <AlertCircle className="w-3 h-3" />
-                  En retard de {retard} jours
-                </p>
-              ) : (
-                <p className="text-xs text-slate-500 mt-0.5">Échéance : {fmtDateLong(facture.dateEcheance)}</p>
-              )}
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Praticien</p>
-              <p className="text-sm font-medium text-slate-900 mt-1">{praticien?.nom || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Assureur</p>
-              <p className="text-sm font-medium text-slate-900 mt-1">
-                {assureur?.label || 'Sans assurance'} 
-                {assureur && assureur.taux > 0 && <span className="text-xs text-slate-500 ml-1">({assureur.taux * 100}%)</span>}
-              </p>
-            </div>
-          </div>
-
-          {/* Lignes */}
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 mb-3">Prestations</h3>
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 text-slate-500">
-                <tr>
-                  <th className="pb-2 font-medium">Libellé</th>
-                  <th className="pb-2 font-medium text-center">Qté</th>
-                  <th className="pb-2 font-medium text-right">PU (DH)</th>
-                  <th className="pb-2 font-medium text-right">Total (DH)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {facture.lignes.map((l, i) => (
-                  <tr key={i}>
-                    <td className="py-2.5 font-medium text-slate-900">{l.code} - {l.libelle}</td>
-                    <td className="py-2.5 text-slate-600 text-center">{l.qte}</td>
-                    <td className="py-2.5 text-slate-600 text-right">{dh(l.pu, true).replace(' DH', '')}</td>
-                    <td className="py-2.5 font-medium text-slate-900 text-right">{dh(ligneTotal(l), true).replace(' DH', '')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Totals Block */}
-            <div className="mt-4 flex flex-col items-end gap-2 text-sm">
-              <div className="flex justify-between w-64 text-slate-600">
-                <span>Total HT</span>
-                <span>{dh(factureHT(facture) / (1 - facture.remise / 100), true)}</span>
-              </div>
-              {facture.remise > 0 && (
-                <div className="flex justify-between w-64 text-emerald-600">
-                  <span>Remise ({facture.remise}%)</span>
-                  <span>-{dh((factureHT(facture) / (1 - facture.remise / 100)) * (facture.remise / 100), true)}</span>
-                </div>
-              )}
-              <div className="flex justify-between w-64 text-slate-600 pb-2 border-b border-slate-200">
-                <span>TVA (20%)</span>
-                <span>{dh(factureTVA(facture), true)}</span>
-              </div>
-              <div className="flex justify-between w-64 font-bold text-base text-slate-900 pt-1">
-                <span>Net à payer</span>
-                <span>{dh(net, true)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Paiements */}
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 mb-3">Historique des paiements</h3>
-            {facture.paiements.length === 0 ? (
-              <p className="text-sm text-slate-500 italic bg-slate-50 p-4 rounded-lg text-center">Aucun paiement enregistré.</p>
-            ) : (
-              <div className="space-y-2">
-                {facture.paiements.map(p => (
-                  <div key={p.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg bg-white shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-1 rounded">
-                        {p.mode}
-                      </div>
-                      <span className="text-sm text-slate-600">{fmtDateLong(p.date)}</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="font-bold text-slate-900">{dh(p.montant)}</span>
-                      <button 
-                        onClick={() => {
-                          if(confirm('Supprimer ce paiement ?')) removePaiement({ fId: facture.id, pId: p.id });
-                        }}
-                        className="text-slate-400 hover:text-red-600 transition-colors"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {/* Reste */}
-            {facture.paiements.length > 0 && reste > 0 && (
-              <div className="mt-4 flex justify-end">
-                <div className="bg-amber-50 text-amber-800 px-4 py-2 rounded-lg font-bold text-sm border border-amber-200">
-                  Reste à encaisser : {dh(reste)}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Bottom Actions */}
-        <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between print:hidden">
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 font-medium text-sm transition-colors shadow-sm"
-            >
-              <Printer className="w-4 h-4" />
-              Imprimer
-            </button>
-              {facture.statut === 'brouillon' && (
-                <button 
-                  onClick={() => emitFacture(facture.id)}
-                  className="inline-flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium text-sm transition-colors"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  Émettre la facture
-                </button>
-              )}
-              {facture.statut !== 'annulee' && (
-                <button 
-                  onClick={() => {
-                    if(confirm('Voulez-vous vraiment annuler cette facture ?')) cancelFacture({ id: facture.id, reason: 'Annulation' });
-                  }}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg font-medium text-sm transition-colors"
-                >
-                  <Ban className="w-4 h-4" />
-                  Annuler la facture
-                </button>
-              )}
-          </div>
-          
-          {reste > 0 && facture.statut !== 'annulee' && facture.statut !== 'brouillon' && (
-            <button 
-              onClick={() => setIsEncaisserOpen(true)}
-              className="inline-flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition-colors text-sm"
-            >
-              <CreditCard className="w-4 h-4" />
-              Encaisser
-            </button>
-          )}
-        </div>
+        <button
+          onClick={onClose}
+          className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600"
+          aria-label="Fermer"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
-      <EncaisserModal 
-        isOpen={isEncaisserOpen}
-        onClose={() => setIsEncaisserOpen(false)}
-        factureId={facture.id}
-        reste={reste}
-      />
-    </>
+      {/* Content: as tall as it needs, scrolls only when it exceeds the viewport */}
+      <div className="min-h-0 space-y-4 overflow-y-auto p-6">
+
+        {/* Montants: supporting figures small, Reste à payer is the focal point */}
+        <Card tone="muted">
+          <p className={LABEL}>Montants</p>
+          <dl className="mt-3 space-y-1.5 text-sm">
+            <div className="flex items-center justify-between text-slate-500">
+              <dt>Facturé</dt>
+              <dd className="font-semibold text-slate-700">{dh(facture.montant, true)}</dd>
+            </div>
+            <div className="flex items-center justify-between text-slate-500">
+              <dt>Encaissé</dt>
+              <dd className="font-semibold text-slate-700">{dh(paye, true)}</dd>
+            </div>
+          </dl>
+          <div
+            className={cn(
+              'mt-4 flex items-end justify-between gap-4 rounded-xl border px-4 py-3.5',
+              reste > 0 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'
+            )}
+          >
+            <div>
+              <p className={cn('text-xs font-bold uppercase tracking-wide', reste > 0 ? 'text-amber-700' : 'text-emerald-700')}>
+                {reste > 0 ? 'Reste à payer' : 'Soldé'}
+              </p>
+              {isLate && reste > 0 && (
+                <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-red-600">
+                  <AlertCircle className="h-3 w-3" /> En retard de {retard} jours
+                </p>
+              )}
+            </div>
+            <p className={cn('text-3xl font-black leading-none tracking-tight', reste > 0 ? 'text-amber-700' : 'text-emerald-700')}>
+              {dh(reste, true)}
+            </p>
+          </div>
+        </Card>
+
+        {/* Détails */}
+        <Card tone="muted" className="grid grid-cols-2 gap-6">
+          <div>
+            <p className={LABEL}>Patient</p>
+            <p className="mt-1 text-sm font-bold text-slate-900">{facture.patientNom}</p>
+          </div>
+          <div>
+            <p className={LABEL}>Date</p>
+            <p className="mt-1 text-sm font-medium text-slate-900">{fmtDateLong(facture.dateEmission)}</p>
+            {reste > 0 && <p className="mt-0.5 text-xs text-slate-500">Échéance : {fmtDateLong(facture.dateEcheance)}</p>}
+          </div>
+          <div>
+            <p className={LABEL}>Praticien</p>
+            <p className="mt-1 text-sm font-medium text-slate-900">{praticienNom || 'Non renseigné'}</p>
+          </div>
+          <div>
+            <p className={LABEL}>Mutuelle</p>
+            <p className="mt-1 text-sm font-medium text-slate-900">{facture.assureurId || 'Sans assurance'}</p>
+          </div>
+        </Card>
+
+        {/* Paiements: newest first, one row per collection */}
+        <Card tone="muted">
+          <div className="flex items-center justify-between">
+            <p className={LABEL}>Paiements</p>
+            {paiements.length > 0 && <Badge tone="neutral">{paiements.length}</Badge>}
+          </div>
+          {paiements.length === 0 ? (
+            <p className="mt-3 text-sm italic text-slate-500">Aucun paiement enregistré.</p>
+          ) : (
+            <ol className="mt-3">
+              {paiements.map((p, i) => (
+                <li key={p.id} className="relative flex items-center justify-between gap-4 pb-3 pl-5 last:pb-0">
+                  {/* timeline rail + dot */}
+                  {i < paiements.length - 1 && <span className="absolute left-[3px] top-3 h-full w-px bg-slate-200" aria-hidden />}
+                  <span className="absolute left-0 top-[9px] h-[7px] w-[7px] rounded-full bg-emerald-500" aria-hidden />
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-slate-700">{fmtDateLong(p.date)}</span>
+                    <Badge tone="neutral">{p.mode === 'Especes' ? 'Espèces' : p.mode}</Badge>
+                  </div>
+                  <span className="shrink-0 text-sm font-bold text-slate-900">{dh(p.montant)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Card>
+      </div>
+
+      {/* Footer sits right under the content */}
+      <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-6 py-4 print:hidden">
+        <Button variant="secondary" onClick={onPrint}>
+          <Printer className="h-4 w-4" /> Imprimer
+        </Button>
+        {reste > 0 && (
+          <Button variant="success" onClick={onEncaisser}>
+            <CreditCard className="h-4 w-4" /> Encaisser
+          </Button>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+type FacturePayment = ReturnType<typeof useFacturePayment>;
+
+// The shared payment UI, shown in place of the detail (no second modal stacked on top).
+export function FacturePaymentPanel({ facture, pay, onBack, onReceiptYes }: {
+  facture: Facture; pay: FacturePayment; onBack: () => void; onReceiptYes: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.16, ease: 'easeOut' }}
+      onClick={(e) => e.stopPropagation()}
+      className="flex w-full max-w-lg max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+    >
+      {pay.done ? (
+        <div className="p-8">
+          <PaymentDone patientName={facture.patientNom} done={pay.done} onReceiptYes={onReceiptYes} onReceiptNo={onBack} />
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-6 py-4">
+            <button
+              onClick={onBack}
+              disabled={pay.processing}
+              className="rounded-full p-1.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 disabled:opacity-50"
+              aria-label="Retour au détail de la facture"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Encaisser</h2>
+              <p className="text-xs font-medium text-slate-500">{facture.numero} · {facture.patientNom}</p>
+            </div>
+          </div>
+          <div className="min-h-0 overflow-y-auto p-6">
+            <PaymentBody
+              total={pay.total} alreadyPaid={pay.alreadyPaid} reste={pay.reste}
+              amount={pay.amount} onAmountChange={pay.setAmount}
+              method={pay.method} onMethodChange={pay.setMethod}
+              error={pay.error} blockedReason={pay.blockedReason}
+            />
+          </div>
+          <div className="border-t border-slate-200 bg-white px-6 py-4">
+            <PaymentFooter
+              amount={pay.amount} reste={pay.reste} processing={pay.processing} blockedReason={pay.blockedReason}
+              onCancel={onBack} onConfirm={pay.confirm} cancelLabel="Retour"
+            />
+          </div>
+        </>
+      )}
+    </motion.div>
+  );
+}
+
+export function FactureDrawer() {
+  const { ui, setFactureOuverteId, setRecuPaiementId } = useFacturationStore();
+  const { data: factures = [] } = useFacturesQuery();
+  const { praticiens } = useFilterOptions();
+  const [view, setView] = useState<'detail' | 'pay'>('detail');
+
+  const facture = factures.find(f => f.id === ui.factureOuverteId);
+  const pay = useFacturePayment(facture ?? null);
+
+  // Always open on the detail.
+  useEffect(() => { setView('detail'); }, [ui.factureOuverteId]);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || pay.processing) return;
+      if (view === 'pay') setView('detail');
+      else setFactureOuverteId(null);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [view, pay.processing, setFactureOuverteId]);
+
+  if (!facture) return null;
+
+  const handleClose = () => { if (!pay.processing) setFactureOuverteId(null); };
+  const startPay = () => { pay.start(); setView('pay'); };
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm print:static print:block print:bg-transparent print:p-0"
+      onClick={handleClose}
+    >
+      {view === 'pay' ? (
+        <FacturePaymentPanel
+          facture={facture}
+          pay={pay}
+          onBack={() => setView('detail')}
+          onReceiptYes={() => { setRecuPaiementId(facture.id); setFactureOuverteId(null); }}
+        />
+      ) : (
+        <FactureDetail
+          facture={facture}
+          praticienNom={praticiens.find(p => p.id === facture.praticienId)?.nom}
+          onClose={handleClose}
+          onPrint={() => window.print()}
+          onEncaisser={startPay}
+        />
+      )}
+    </div>
   );
 }

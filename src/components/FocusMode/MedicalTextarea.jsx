@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Mic, MicOff } from 'lucide-react';
+import IconButton from '../common/IconButton';
 import { getAllSuggestions, getSuggestionMeta } from './SuggestionEngine';
 import { SuggestionPopup } from './SuggestionPopup';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
@@ -289,28 +290,19 @@ export function MedicalTextarea({
         )}
         <div className="medical-toolbar-actions ml-auto">
           {speech.isSupported ? (
-            <button
-              type="button"
+            <IconButton
+              look="soft"
+              alert={speech.isListening}
+              label={speech.isListening ? 'Arrêter la dictée vocale' : 'Démarrer la dictée vocale'}
               onClick={(e) => {
                 e.preventDefault();
                 setSpeechError(null);
                 speech.toggleListening();
                 textareaRef.current?.focus();
               }}
-              className={`speech-btn transition-all duration-200 ${
-                speech.isListening
-                  ? 'listening bg-red-100 text-red-600 border-red-300 animate-pulse'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-              title={speech.isListening ? 'Arrêter la dictée vocale' : 'Démarrer la dictée vocale'}
-              aria-label={speech.isListening ? 'Arrêter la dictée vocale' : 'Démarrer la dictée vocale'}
             >
-              {speech.isListening ? (
-                <MicOff className="w-4 h-4 text-red-600 animate-pulse" />
-              ) : (
-                <Mic className="w-4 h-4 text-slate-600 hover:text-slate-900" />
-              )}
-            </button>
+              {speech.isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </IconButton>
           ) : (
             <span className="text-[11px] text-slate-400 italic">
               Dictée vocale non disponible sur ce navigateur

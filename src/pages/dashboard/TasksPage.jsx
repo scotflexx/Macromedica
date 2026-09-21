@@ -259,7 +259,7 @@ export default function TasksPage() {
   // ── Error state ───────────────────────────────────────────────────────────
   if (isError) {
     return (
-      <div className="w-full px-6 pb-10 pt-0 bg-slate-50 min-h-screen">
+      <div className="w-full px-6 pb-10 pt-6 bg-slate-50 min-h-screen">
       <div className="w-full rounded-[20px] border border-rose-200 bg-white p-8 text-center shadow-sm mt-5">
           <AlertCircle className="mx-auto h-12 w-12 text-rose-500 mb-4" />
           <h2 className="text-xl font-bold text-slate-900">Erreur de chargement</h2>
@@ -270,7 +270,7 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="w-full px-6 pb-10 pt-0 bg-slate-50 min-h-screen">
+    <div className="w-full px-6 pb-10 pt-6 bg-slate-50 min-h-screen">
       <div className="w-full space-y-5">
 
         {/* ── Page Header ─────────────────────────────────────────────── */}

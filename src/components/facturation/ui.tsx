@@ -6,9 +6,7 @@ export const statutMeta: Record<Statut, { label: string; wrapperClass: string; d
   payee: { label: 'Payée', wrapperClass: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200', dotClass: 'bg-emerald-500' },
   partielle: { label: 'Partielle', wrapperClass: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' },
   en_attente: { label: 'En attente', wrapperClass: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200', dotClass: 'bg-slate-400' },
-  en_retard: { label: 'En retard', wrapperClass: 'bg-red-50 text-red-700 ring-1 ring-red-200', dotClass: 'bg-red-500' },
-  annulee: { label: 'Annulée', wrapperClass: 'bg-rose-50 text-rose-600 ring-1 ring-rose-200' },
-  brouillon: { label: 'Brouillon', wrapperClass: 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200' }
+  en_retard: { label: 'En retard', wrapperClass: 'bg-red-50 text-red-700 ring-1 ring-red-200', dotClass: 'bg-red-500' }
 };
 
 export function StatutBadge({ statut, className }: { statut: Statut; className?: string }) {
@@ -22,9 +20,15 @@ export function StatutBadge({ statut, className }: { statut: Statut; className?:
   );
 }
 
-export function Card({ children, className }: { children: React.ReactNode; className?: string }) {
+// `muted` is the subtle gray bordered block used inside detail panels (drawer / modal sections).
+export function Card({ children, className, tone = 'default' }: { children: React.ReactNode; className?: string; tone?: 'default' | 'muted' }) {
   return (
-    <div className={cn('bg-white rounded-2xl border border-slate-200 shadow-sm p-4', className)}>
+    <div className={cn(
+      tone === 'muted'
+        ? 'bg-slate-50 rounded-xl border border-slate-100 p-5'
+        : 'bg-white rounded-2xl border border-slate-200 shadow-sm p-4',
+      className
+    )}>
       {children}
     </div>
   );

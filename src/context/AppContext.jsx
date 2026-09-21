@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, useCal
 import { supabase } from '../lib/supabase'
 import { RDV_STATUSES } from '../lib/workflow'
 import { normalizeRole, toLegacyRole } from '../lib/rbac'
-import { getDoctors, getTodayVisits, subscribeClinicPayments, subscribeClinicVisits } from '../lib/visitService'
+import { getDoctors, getTodayVisits, getOutstandingBalanceVisits, subscribeClinicPayments, subscribeClinicVisits } from '../lib/visitService'
 
 const AppContext = createContext(null)
 const PREFS_KEY = 'macromedica-notification-prefs'
@@ -29,6 +29,8 @@ export function AppProvider({ children }) {
   const [patients, setPatients] = useState([])
   const [rdvList, setRdvList] = useState([])
   const [visits, setVisits] = useState([])
+  // Earlier-day visits still owing money (shown in Historique, not in the live queue)
+  const [outstandingVisits, setOutstandingVisits] = useState([])
   const [doctors, setDoctors] = useState([])
   const [consultations, setConsultations] = useState([])
   const [dataErrors, setDataErrors] = useState({})
@@ -94,6 +96,15 @@ export function AppProvider({ children }) {
       return null
     }
   }, [])
+
+  const refreshProfile = useCallback(async () => {
+    if (user?.id) {
+      const fresh = await fetchProfile(user.id)
+      if (fresh) setProfile(fresh)
+      return fresh
+    }
+    return null
+  }, [user?.id, fetchProfile])
 
   const loadPatients = useCallback(async (cId) => {
     try {
@@ -164,6 +175,11 @@ export function AppProvider({ children }) {
       console.error('Visits load error:', err?.message || err?.code || err)
       setDataErrors((current) => ({ ...current, visits: err }))
     }
+    try {
+      setOutstandingVisits(await getOutstandingBalanceVisits(cId))
+    } catch (err) {
+      console.error('Outstanding balances load error:', err?.message || err?.code || err)
+    }
   }, [])
 
   const loadDoctors = useCallback(async (cId) => {
@@ -207,6 +223,8 @@ export function AppProvider({ children }) {
       setPatients([])
       setRdvList([])
       setVisits([])
+
+      setOutstandingVisits([])
       setDoctors([])
       setConsultations([])
       return
@@ -283,6 +301,8 @@ export function AppProvider({ children }) {
           setPatients([])
           setRdvList([])
           setVisits([])
+
+          setOutstandingVisits([])
           setDoctors([])
           setConsultations([])
           localStorage.removeItem('macromedica_visits_cache')
@@ -436,6 +456,8 @@ export function AppProvider({ children }) {
     setPatients([])
     setRdvList([])
     setVisits([])
+
+    setOutstandingVisits([])
     setDoctors([])
     setConsultations([])
     localStorage.removeItem(PREFS_KEY)
@@ -463,7 +485,8 @@ export function AppProvider({ children }) {
             ...visit,
             status: newStatus,
             billing_type: extra.method || visit.billing_type || 'cash',
-            billing_amount: extra.amount !== undefined ? Number(extra.amount) : (visit.billing_amount || 300),
+            // No invented default: an unknown amount stays unknown (the server figure is authoritative).
+            billing_amount: extra.amount !== undefined ? Number(extra.amount) : visit.billing_amount,
             updated_at: new Date().toISOString(),
             ...extra
           }
@@ -527,12 +550,13 @@ export function AppProvider({ children }) {
     permissionsLoaded,
     can,
     refreshPermissions: fetchPermissions,
-    cabinet: profile?.clinics,
+    refreshProfile,
+    cabinet: profile?.cabinets || profile?.clinics || null,
     clinicId,
     cabinetId: clinicId,
     currentUser: profile
-      ? { name: profile.nom_complet, role: profile.role }
-      : { name: 'Utilisateur', role: 'Staff' },
+      ? { id: profile.id, name: profile.nom_complet, role: profile.role }
+      : (user ? { id: user.id, name: 'Utilisateur', role: 'Staff' } : null),
     isAuthenticated,
     isInitializing,
     toasts,
@@ -558,6 +582,7 @@ export function AppProvider({ children }) {
     appointments: rdvList,
     consultations,
     visits,
+    outstandingVisits,
     doctors,
     waitingList,
     invoices: [],
@@ -582,7 +607,7 @@ export function AppProvider({ children }) {
         loadDoctors(clinicId)
       }
     },
-  }), [user, profile, role, canonicalRole, permissions, permissionsLoaded, can, fetchPermissions, clinicId, isAuthenticated, isInitializing, toasts, globalModal, confirmDialog, notificationPrefs, dataErrors, patients, rdvList, consultations, visits, doctors, waitingList, updateVisitStatus, removeVisit, updatePatientDebt])
+  }), [user, profile, role, canonicalRole, permissions, permissionsLoaded, can, fetchPermissions, refreshProfile, clinicId, isAuthenticated, isInitializing, toasts, globalModal, confirmDialog, notificationPrefs, dataErrors, patients, rdvList, consultations, visits, outstandingVisits, doctors, waitingList, updateVisitStatus, removeVisit, updatePatientDebt])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

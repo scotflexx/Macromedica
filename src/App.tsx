@@ -20,9 +20,8 @@ import AppointmentsPage from './pages/dashboard/AppointmentsPage'
 import FacturationPage from './pages/dashboard/FacturationPage'
 import PatientsPage from './pages/dashboard/PatientsPage'
 import SettingsPage from './pages/dashboard/SettingsPage'
-import ConsultationWorkspace from './pages/dashboard/ConsultationWorkspace'
+import ConsultationRedirect from './pages/dashboard/ConsultationRedirect'
 import PatientWorkspace from './pages/dashboard/PatientWorkspace'
-import DossierPatient from './pages/dashboard/DossierPatient'
 import TasksPage from './pages/dashboard/TasksPage'
 
 function RootRedirect() {
@@ -75,14 +74,6 @@ const router = createBrowserRouter([
                   </RoleGuard>
                 ),
               },
-              {
-                path: '/patients/:id/dossier',
-                element: (
-                  <RoleGuard role="docteur">
-                    <DossierPatient />
-                  </RoleGuard>
-                ),
-              },
 
               // 4. Facturation
               {
@@ -118,12 +109,12 @@ const router = createBrowserRouter([
               // 7. Paramètres
               { path: '/parametres', element: <SettingsPage /> },
 
-              // Hidden/Helper Routes
+              // Legacy /consultation/:id links (older builds, bookmarks) -> new patient workspace
               {
                 path: '/consultation/:visitId',
                 element: (
                   <RoleGuard role="docteur">
-                    <ConsultationWorkspace />
+                    <ConsultationRedirect />
                   </RoleGuard>
                 ),
               },

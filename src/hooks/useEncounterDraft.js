@@ -41,8 +41,12 @@ export function useEncounterDraft({ patientId, visitId, active, note, onHydrate 
       .then((row) => {
         enc.current = { id: row.id, version: row.version }
         const server = normalizeNote(row.note)
-        if (!isNoteEmpty(server)) onHydrateRef.current?.(server)
-        lastSaved.current = JSON.stringify(isNoteEmpty(server) ? server : normalizeNote(noteRef.current))
+        // Always adopt the server's note, even an empty one. The sheet shows a
+        // spinner until hydration, so nothing can have been typed yet; keeping the
+        // page's in-memory note here would seed a brand-new draft with the content
+        // of whatever consultation was open before (e.g. one just finished).
+        onHydrateRef.current?.(server)
+        lastSaved.current = JSON.stringify(server)
         hydrated.current = true
         setState({ status: 'ready', error: null, savedAt: isNoteEmpty(server) ? new Date(row.updated_at) : null })
       })
@@ -116,8 +120,11 @@ export function useEncounterDraft({ patientId, visitId, active, note, onHydrate 
     setState({ status: 'discarded', error: null, savedAt: null })
   }, [])
 
+  // A finished or abandoned consultation ends this hook's session: once the sheet
+  // closes, go back to idle so the next consultation opens (or resumes) its own
+  // draft instead of staying stuck on the old status.
   useEffect(() => {
-    if (!active && state.status === 'discarded') setState({ status: 'idle', error: null, savedAt: null })
+    if (!active && (state.status === 'discarded' || state.status === 'completed')) setState({ status: 'idle', error: null, savedAt: null })
   }, [active, state.status])
 
   const retryOpen = useCallback(() => {

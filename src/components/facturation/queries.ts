@@ -1,168 +1,50 @@
+import { useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
-import { 
-  fetchFactures, 
-  createFacture, 
-  cancelFacture, 
-  addPaiementAPI, 
-  removePaiementAPI, 
-  markRelanceAPI, 
-  fetchStatsAPI, 
-  fetchDebiteursAPI 
-} from './api';
-import { useFacturationStore } from './store';
-
-const IS_DEMO = import.meta.env.VITE_FACTURATION_DEMO !== 'false';
+import { useAppContext } from '../../context/AppContext';
+import { encaisserFacture, fetchFactures } from './api';
+import { Facture } from './data';
 
 export const useFacturesQuery = () => {
-  const filters = useFacturationStore(s => s.filters);
-  const demoFactures = useFacturationStore(s => s.factures);
-  
-  const query = useQuery({
-    queryKey: ['factures', filters],
-    queryFn: () => fetchFactures(filters),
-    enabled: !IS_DEMO,
+  const { clinicId } = useAppContext();
+  return useQuery({
+    queryKey: ['factures', clinicId],
+    queryFn: () => fetchFactures(clinicId as string),
+    enabled: Boolean(clinicId),
   });
-
-  if (IS_DEMO) {
-    let result = [...demoFactures];
-    if (filters.statut) result = result.filter(f => f.statut === filters.statut);
-    if (filters.assureurId) result = result.filter(f => f.assureur === filters.assureurId);
-    if (filters.praticienId) result = result.filter(f => f.praticienId === filters.praticienId);
-    if (filters.recherche) {
-      const term = filters.recherche.toLowerCase();
-      result = result.filter(f => f.numero.toLowerCase().includes(term) || f.patientNom.toLowerCase().includes(term));
-    }
-    return { data: result, isLoading: false, error: null };
-  }
-  
-  return query;
 };
 
-export const useFacturationMutations = () => {
+// Refetch when a payment is collected elsewhere in the app (dashboard cashier queue).
+export const useFacturationSync = () => {
   const queryClient = useQueryClient();
-  const store = useFacturationStore();
+  useEffect(() => {
+    const refresh = () => queryClient.invalidateQueries({ queryKey: ['factures'] });
+    window.addEventListener('mm:payments-changed', refresh);
+    return () => window.removeEventListener('mm:payments-changed', refresh);
+  }, [queryClient]);
+};
 
-  const createMut = useMutation({
-    mutationFn: (draft: any) => createFacture(draft),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['factures'] })
-  });
-
-  const cancelMut = useMutation({
-    mutationFn: ({ id, reason }: { id: string, reason: string }) => cancelFacture(id, reason),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['factures'] })
-  });
-
-  const addPayMut = useMutation({
-    mutationFn: ({ id, p }: { id: string, p: any }) => addPaiementAPI(id, p),
-    onMutate: async ({ id, p }) => {
-      await queryClient.cancelQueries({ queryKey: ['factures'] });
-      const previousFactures = queryClient.getQueryData(['factures', store.filters]);
-      
-      if (previousFactures) {
-        queryClient.setQueryData(['factures', store.filters], (old: any) => {
-          if (!old) return old;
-          return old.map((f: any) => {
-            if (f.id === id) {
-              const alreadyPaid = f.paiements.reduce((s: number, pm: any) => s + pm.montant, 0);
-              const net = f.lignes.reduce((s: number, l: any) => s + (l.pu * l.qte), 0) * (1 - f.remise / 100) * 1.2;
-              const reste = net - alreadyPaid;
-              const newPaid = alreadyPaid + p.montant;
-              let newStatut = f.statut;
-              if (p.montant >= reste - 0.01) newStatut = 'payee';
-              else newStatut = 'partielle';
-
-              return {
-                ...f,
-                statut: newStatut,
-                paiements: [...f.paiements, { ...p, id: 'temp-' + Date.now() }]
-              };
-            }
-            return f;
-          });
-        });
-      }
-      return { previousFactures };
-    },
-    onError: (err, newPay, context) => {
-      if (context?.previousFactures) {
-        queryClient.setQueryData(['factures', store.filters], context.previousFactures);
-      }
-    },
-    onSettled: () => {
+export const useEncaisser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ facture, montant, method }: { facture: Facture; montant: number; method: string }) =>
+      encaisserFacture(facture, montant, method),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['factures'] });
-    }
+      window.dispatchEvent(new CustomEvent('mm:payments-changed'));
+    },
   });
-
-  const removePayMut = useMutation({
-    mutationFn: (paymentId: string) => removePaiementAPI(paymentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['factures'] })
-  });
-
-  const relanceMut = useMutation({
-    mutationFn: ({ id, val }: { id: string, val: boolean }) => markRelanceAPI(id, val),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['factures'] })
-  });
-
-  const emitMut = useMutation({
-    mutationFn: (id: string) => supabase.rpc('emit_facture', { p_id: id }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['factures'] })
-  });
-
-  if (IS_DEMO) {
-    return {
-      createFacture: async (draft: any) => store.createFacture(draft),
-      cancelFacture: async ({ id, reason }: any) => store.setStatut(id, 'annulee'),
-      addPaiement: async ({ id, p }: any) => store.addPaiement(id, p),
-      removePaiement: async ({ fId, pId }: any) => store.removePaiement(fId, pId),
-      markRelance: async ({ id, val }: any) => store.markRelance(id),
-      emitFacture: async (id: string) => store.setStatut(id, 'en_attente')
-    };
-  }
-
-  return {
-    createFacture: (draft: any) => createMut.mutateAsync(draft),
-    cancelFacture: (params: any) => cancelMut.mutateAsync(params),
-    addPaiement: (params: any) => addPayMut.mutateAsync(params),
-    removePaiement: (params: any) => removePayMut.mutateAsync(params.pId), // API just needs pId
-    markRelance: (params: any) => relanceMut.mutateAsync(params),
-    emitFacture: (id: string) => emitMut.mutateAsync(id)
-  };
 };
 
-export const useFacturationStats = () => {
-  const filters = useFacturationStore(s => s.filters);
-  const query = useQuery({
-    queryKey: ['factures-stats', filters],
-    queryFn: () => fetchStatsAPI(filters),
-    enabled: !IS_DEMO,
-  });
-
-  if (IS_DEMO) {
-    // Generate dummy stats from Zustand for demo
-    const factures = useFacturationStore.getState().factures;
-    // ... complex math skipped for demo ...
-    return { data: {
-      kpis: { caNet: 10000, encaisse: 8000, reste: 2000, panier: 500, count: 20 },
-      ageing: { '0_30': 1000, '31_60': 500, '61_90': 500, '90_plus': 0 },
-      statutDistribution: { 'payee': 15, 'en_attente': 5 },
-      dso: 12
-    }, isLoading: false };
-  }
-
-  return query;
-};
-
-export const useDebiteursQuery = () => {
-  const query = useQuery({
-    queryKey: ['debiteurs'],
-    queryFn: fetchDebiteursAPI,
-    enabled: !IS_DEMO,
-  });
-
-  if (IS_DEMO) {
-    return { data: [], isLoading: false }; // Simple fallback for demo
-  }
-
-  return query;
+// Filter choices come from the clinic's real practitioners and the mutuelles present in its data.
+export const useFilterOptions = () => {
+  const { doctors } = useAppContext();
+  const { data: factures = [] } = useFacturesQuery();
+  return useMemo(() => {
+    const praticiens = (doctors || []).map((d: any) => ({
+      id: d.id as string,
+      nom: (d.nom_complet || `${d.first_name || ''} ${d.last_name || ''}`.trim() || 'Praticien') as string,
+    }));
+    const assureurs = Array.from(new Set(factures.map(f => f.assureurId).filter(Boolean))).sort();
+    return { praticiens, assureurs };
+  }, [doctors, factures]);
 };

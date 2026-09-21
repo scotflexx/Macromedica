@@ -5,7 +5,7 @@ import { Skeleton, ErrorState } from './ui';
 import { getTotals, filterFactures } from './selectors';
 import { Card } from './ui';
 import { dh, num, pct } from './format';
-import { TrendingUp, Banknote, Clock, Wallet } from 'lucide-react';
+import { TrendingUp, Banknote, Clock, AlertCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 export function KpiCards() {
@@ -30,7 +30,7 @@ export function KpiCards() {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Chiffre d'affaires</p>
             <p className="text-2xl font-bold tracking-tight text-slate-900 mt-1">{dh(totals.caNet)}</p>
             <p className="text-sm text-slate-500 mt-1">
-              Brut {num(totals.caBrut)} DH
+              {num(totals.count)} {totals.count > 1 ? 'factures' : 'facture'}
             </p>
           </div>
         </div>
@@ -68,18 +68,26 @@ export function KpiCards() {
         </div>
       </Card>
 
-      {/* Panier moyen */}
+      {/* En retard: unpaid balances older than the payment term */}
       <Card>
         <div className="flex items-center gap-4">
-          <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-violet-50 text-violet-600">
-            <Wallet className="w-5 h-5" />
+          <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-red-50 text-red-600">
+            <AlertCircle className="w-5 h-5" />
           </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Panier moyen</p>
-            <p className="text-2xl font-bold tracking-tight text-slate-900 mt-1">{dh(totals.panierMoyen)}</p>
-            <p className="text-sm text-slate-500 mt-1">
-              {totals.count} {totals.count > 1 ? 'factures' : 'facture'}
-            </p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">En retard</p>
+            <p className="text-2xl font-bold tracking-tight text-red-600 mt-1">{dh(totals.enRetardAmount)}</p>
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <p className="text-sm text-slate-500">
+                {totals.enRetardCount} {totals.enRetardCount > 1 ? 'factures impayées' : 'facture impayée'}
+              </p>
+              <div className="h-1.5 w-14 max-w-[60px] flex-1 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-red-500"
+                  style={{ width: `${Math.min(100, totals.caNet > 0 ? (totals.enRetardAmount / totals.caNet) * 100 : 0)}%` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </Card>

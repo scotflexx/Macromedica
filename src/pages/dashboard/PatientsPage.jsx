@@ -215,19 +215,22 @@ function PatientsPage() {
 
 
   return (
-    <div className="space-y-6">
+    <div className="pt-6 space-y-6">
       {/* ── Header ── */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[32px] font-bold text-slate-900 tracking-tight">Patients</h1>
-          <p className="text-[14px] text-slate-500 mt-1">
-            Gestion du registre de la clinique · <span className="font-semibold text-blue-600">{totalPatients.toLocaleString('fr-FR')} dossiers</span>
+          <h1 className="text-[26px] font-black text-slate-900 leading-tight">Patients</h1>
+          <p className="mt-0.5 text-[15px] font-medium text-slate-500">
+            Gestion du registre de la clinique • <span className="font-semibold text-blue-600">{totalPatients.toLocaleString('fr-FR')} dossiers</span>
           </p>
         </div>
-        <AppButton onClick={() => setShowCreate(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Nouveau Patient
-        </AppButton>
+        <button 
+          onClick={() => setShowCreate(true)}
+          className="flex items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-[0_2px_10px_rgba(37,99,235,0.2)] transition-all hover:bg-blue-700 hover:shadow-[0_4px_14px_rgba(37,99,235,0.3)] hover:-translate-y-0.5 active:translate-y-0 active:shadow-none"
+        >
+          <Plus className="w-4 h-4" strokeWidth={2.5} />
+          <span>Nouveau patient</span>
+        </button>
       </div>
 
       {/* ── 3 Stat Cards ── */}

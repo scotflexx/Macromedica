@@ -1,11 +1,14 @@
-import { Facture, factureNet, facturePaye, factureReste, Paiement } from './data';
+import { Facture, facturePaye, factureReste, Paiement } from './data';
 import { FilterState } from './store';
 import { joursRetard, fmtMonthShort } from './format';
 
 export const filterFactures = (factures: Facture[], filters: FilterState) => {
   const now = new Date();
   let startMs = 0;
-  if (filters.periode === '3m') startMs = now.getTime() - 90 * 86400000;
+  if (filters.periode === '1d') startMs = now.getTime() - 86400000;
+  else if (filters.periode === '7d') startMs = now.getTime() - 7 * 86400000;
+  else if (filters.periode === '1m') startMs = now.getTime() - 30 * 86400000;
+  else if (filters.periode === '3m') startMs = now.getTime() - 90 * 86400000;
   else if (filters.periode === '6m') startMs = now.getTime() - 180 * 86400000;
   else if (filters.periode === '12m') startMs = now.getTime() - 365 * 86400000;
 
@@ -14,16 +17,10 @@ export const filterFactures = (factures: Facture[], filters: FilterState) => {
     if (filters.praticienId && f.praticienId !== filters.praticienId) return false;
     if (filters.assureurId && f.assureurId !== filters.assureurId) return false;
     if (filters.statut && f.statut !== filters.statut) return false;
-    
+
     if (filters.recherche) {
       const q = filters.recherche.toLowerCase();
-      const match = (
-        f.numero.toLowerCase().includes(q) ||
-        f.patientNom.toLowerCase().includes(q) ||
-        f.patientRef.toLowerCase().includes(q) ||
-        f.lignes.some(l => l.code.toLowerCase().includes(q) || l.libelle.toLowerCase().includes(q))
-      );
-      if (!match) return false;
+      if (!f.numero.toLowerCase().includes(q) && !f.patientNom.toLowerCase().includes(q)) return false;
     }
     return true;
   });
@@ -31,47 +28,33 @@ export const filterFactures = (factures: Facture[], filters: FilterState) => {
 
 export const getTotals = (filteredFactures: Facture[]) => {
   let caNet = 0;
-  let caBrut = 0;
   let totalEncaisse = 0;
-  let count = 0;
   let facturesPayeesCount = 0;
   let enRetardAmount = 0;
   let enRetardCount = 0;
 
   filteredFactures.forEach(f => {
-    if (f.statut === 'annulee' || f.statut === 'brouillon') return;
-    
-    // Calculate raw brut (before remise, but with TVA to match Net)
-    const rawSum = f.lignes.reduce((acc, l) => acc + l.pu * l.qte, 0);
-    const brut = rawSum * 1.20; // TTC without discount
-    
-    const net = factureNet(f);
-    const paye = facturePaye(f);
-    
-    caNet += net;
-    caBrut += brut;
-    totalEncaisse += paye;
-    count++;
-    
-    if (f.statut === 'payee' || f.statut === 'partielle') facturesPayeesCount++;
-    
+    caNet += f.montant;
+    totalEncaisse += f.paye;
+    if (f.statut === 'payee') facturesPayeesCount++;
     if (f.statut === 'en_retard') {
-      enRetardAmount += Math.max(0, net - paye);
+      enRetardAmount += factureReste(f);
       enRetardCount++;
     }
   });
 
+  const count = filteredFactures.length;
   const resteAEncaisser = Math.max(0, caNet - totalEncaisse);
   const panierMoyen = count > 0 ? caNet / count : 0;
   const tauxRecouvrement = caNet > 0 ? totalEncaisse / caNet : 0;
 
-  return { caNet, caBrut, totalEncaisse, resteAEncaisser, panierMoyen, tauxRecouvrement, count, facturesPayeesCount, enRetardAmount, enRetardCount };
+  return { caNet, totalEncaisse, resteAEncaisser, panierMoyen, tauxRecouvrement, count, facturesPayeesCount, enRetardAmount, enRetardCount };
 };
 
+// Last 8 calendar months. Months with no activity are real zeros.
 export const getMonthlySeries = (factures: Facture[]) => {
   const map = new Map<string, { mois: string; dateVal: Date; ca: number; encaisse: number }>();
-  
-  // Initialize last 8 months
+
   const d = new Date();
   d.setDate(1); // avoid end-of-month skips
   for (let i = 0; i < 8; i++) {
@@ -81,20 +64,14 @@ export const getMonthlySeries = (factures: Facture[]) => {
   }
 
   factures.forEach(f => {
-    if (f.statut === 'annulee' || f.statut === 'brouillon') return;
-    
-    const emissionDate = new Date(f.dateEmission);
-    const eKey = `${emissionDate.getFullYear()}-${String(emissionDate.getMonth() + 1).padStart(2, '0')}`;
-    if (map.has(eKey)) {
-      map.get(eKey)!.ca += factureNet(f);
-    }
-    
+    const e = new Date(f.dateEmission);
+    const eKey = `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, '0')}`;
+    if (map.has(eKey)) map.get(eKey)!.ca += f.montant;
+
     f.paiements.forEach(p => {
-      const pDate = new Date(p.date);
-      const pKey = `${pDate.getFullYear()}-${String(pDate.getMonth() + 1).padStart(2, '0')}`;
-      if (map.has(pKey)) {
-        map.get(pKey)!.encaisse += p.montant;
-      }
+      const pd = new Date(p.date);
+      const pKey = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
+      if (map.has(pKey)) map.get(pKey)!.encaisse += p.montant;
     });
   });
 
@@ -105,41 +82,18 @@ export const getBreakdowns = (factures: Facture[]) => {
   const byStatut = new Map<string, { count: number; amount: number }>();
   const byAssureur = new Map<string, number>();
   const byPraticien = new Map<string, number>();
-  const byActe = new Map<string, { libelle: string; count: number; amount: number }>();
 
   factures.forEach(f => {
-    if (f.statut === 'brouillon') return;
-    
-    // Statut
     const st = byStatut.get(f.statut) || { count: 0, amount: 0 };
     st.count++;
-    st.amount += factureNet(f);
+    st.amount += f.montant;
     byStatut.set(f.statut, st);
 
-    if (f.statut === 'annulee') return;
-
-    // Assureur
-    byAssureur.set(f.assureurId, (byAssureur.get(f.assureurId) || 0) + factureNet(f));
-
-    // Praticien
-    byPraticien.set(f.praticienId, (byPraticien.get(f.praticienId) || 0) + factureNet(f));
-
-    // Actes
-    f.lignes.forEach(l => {
-      const lineTotal = l.pu * l.qte * (1 - f.remise / 100) * 1.2; // approx net equivalent per line
-      const act = byActe.get(l.code) || { libelle: l.libelle, count: 0, amount: 0 };
-      act.count += l.qte;
-      act.amount += lineTotal;
-      byActe.set(l.code, act);
-    });
+    byAssureur.set(f.assureurId, (byAssureur.get(f.assureurId) || 0) + f.montant);
+    byPraticien.set(f.praticienId, (byPraticien.get(f.praticienId) || 0) + f.montant);
   });
 
-  const topActes = Array.from(byActe.entries())
-    .map(([code, data]) => ({ code, ...data }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5);
-
-  return { byStatut, byAssureur, byPraticien, topActes };
+  return { byStatut, byAssureur, byPraticien };
 };
 
 export const getAgeingBuckets = (factures: Facture[]) => {
@@ -151,10 +105,8 @@ export const getAgeingBuckets = (factures: Facture[]) => {
   ];
 
   factures.forEach(f => {
-    if (f.statut === 'annulee' || f.statut === 'brouillon') return;
     const reste = factureReste(f);
     if (reste <= 0) return;
-    
     const delay = joursRetard(f.dateEcheance);
     const bucket = buckets.find(b => delay >= b.min && delay <= b.max);
     if (bucket) bucket.amount += reste;
@@ -166,16 +118,14 @@ export const getAgeingBuckets = (factures: Facture[]) => {
 export const getPaiementsJournal = (factures: Facture[]) => {
   const journal: { facture: Facture; paiement: Paiement }[] = [];
   factures.forEach(f => {
-    f.paiements.forEach(paiement => {
-      journal.push({ facture: f, paiement });
-    });
+    f.paiements.forEach(paiement => journal.push({ facture: f, paiement }));
   });
   return journal.sort((a, b) => new Date(b.paiement.date).getTime() - new Date(a.paiement.date).getTime());
 };
 
 export interface DebiteurInfo {
   patientNom: string;
-  patientRef: string;
+  patientId: string;
   resteDu: number;
   nbFactures: number;
   retardMax: number;
@@ -184,58 +134,36 @@ export interface DebiteurInfo {
 
 export const getDebiteurs = (factures: Facture[]): DebiteurInfo[] => {
   const map = new Map<string, DebiteurInfo>();
-  
+
   factures.forEach(f => {
-    if (f.statut === 'annulee' || f.statut === 'brouillon') return;
     const reste = factureReste(f);
     if (reste <= 0) return;
-    
-    const retard = joursRetard(f.dateEcheance);
-    
-    if (!map.has(f.patientRef)) {
-      map.set(f.patientRef, {
-        patientNom: f.patientNom,
-        patientRef: f.patientRef,
-        resteDu: 0,
-        nbFactures: 0,
-        retardMax: 0,
-        factures: []
-      });
+
+    if (!map.has(f.patientId)) {
+      map.set(f.patientId, { patientNom: f.patientNom, patientId: f.patientId, resteDu: 0, nbFactures: 0, retardMax: 0, factures: [] });
     }
-    
-    const info = map.get(f.patientRef)!;
+    const info = map.get(f.patientId)!;
     info.resteDu += reste;
     info.nbFactures++;
-    info.retardMax = Math.max(info.retardMax, retard);
+    info.retardMax = Math.max(info.retardMax, joursRetard(f.dateEcheance));
     info.factures.push(f);
   });
 
   return Array.from(map.values()).sort((a, b) => b.resteDu - a.resteDu);
 };
 
+// Average days between billing and the final collection, over fully paid invoices.
 export const getDSO = (factures: Facture[]) => {
   let sumDays = 0;
-  let countPaid = 0;
+  let count = 0;
 
   factures.forEach(f => {
-    if (f.statut !== 'payee') return;
-    const emDate = new Date(f.dateEmission).getTime();
-    
-    // Last payment date
-    let lastPayTime = emDate;
-    f.paiements.forEach(p => {
-      const pTime = new Date(p.date).getTime();
-      if (pTime > lastPayTime) lastPayTime = pTime;
-    });
-    
-    sumDays += Math.max(0, (lastPayTime - emDate) / 86400000);
-    countPaid++;
+    if (f.statut !== 'payee' || f.paiements.length === 0) return;
+    const start = new Date(f.dateEmission).getTime();
+    const end = Math.max(...f.paiements.map(p => new Date(p.date).getTime()));
+    sumDays += Math.max(0, (end - start) / 86400000);
+    count++;
   });
 
-  const dso = countPaid > 0 ? Math.round(sumDays / countPaid) : 0;
-  let label = "Délais d'encaissement à surveiller";
-  if (dso <= 7) label = "Excellente rapidité d'encaissement";
-  else if (dso <= 21) label = "Délai d'encaissement normal";
-  
-  return { dso, label };
+  return { dso: count > 0 ? Math.round(sumDays / count) : null, count };
 };

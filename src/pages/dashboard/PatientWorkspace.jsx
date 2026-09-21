@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams, useBlocker } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import {
   ArrowLeft,
   Calendar,
@@ -48,12 +48,22 @@ import {
 } from 'lucide-react'
 import { useAppContext } from '../../context/AppContext'
 
-import { getPatientById, getPatientClinicalFields } from '../../lib/api'
+import { getDocuments, getOrdonnances, getPatientById, getPatientClinicalFields } from '../../lib/api'
 import { VISIT_STATUSES } from '../../lib/workflow'
 import { useFocusMode } from '../../hooks/useFocusMode'
 import ConsultationSheet from '../../components/consultation/ConsultationSheet'
+import AddItemModal from '../../components/consultation/AddItemModal'
+import Button from '../../components/common/Button'
+import Badge from '../../components/common/Badge'
+import { Card } from '../../components/facturation/ui'
+import { isConsultationLive } from '../../lib/consultationProgress'
+import { useActeSuggestions } from '../../lib/acteSuggestions'
+import { recordActeUse, usageScope } from '../../lib/acteUsage'
 import { useEncounterDraft } from '../../hooks/useEncounterDraft'
 import { getOpenDraft, listCompletedEncounters, normalizeNote } from '../../lib/encounterService'
+import { ordonnancesFromEncounters, examensFromEncounters } from '../../lib/patientRecords'
+import { fetchFactures } from '../../components/facturation/api'
+import { OrdonnancesList, ExamensList, ImagerieList, FacturesList } from '../../components/Patient/DossierRecords'
 import { Backdrop, FocusableCard, MedicalTextarea } from '../../components/FocusMode'
 import PreparationChecklist from '../../components/consultation/PreparationChecklist'
 
@@ -141,9 +151,9 @@ function PatientSidebar({ patient, age, chronicDisease, currentTreatment, emerge
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="bg-gradient-to-br from-blue-600 to-indigo-600 px-6 py-6 text-white">
+      <div className="bg-gradient-to-br from-slate-800 to-slate-600 px-6 py-6 text-white">
         <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/95 text-lg font-bold text-blue-600 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/95 text-lg font-bold text-slate-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
             {initials}
           </div>
           <div>
@@ -230,6 +240,26 @@ function encounterToEvent(enc) {
     diagnosis: n.diagnostics.join(' ; '),
     summary: n.motif,
     details,
+    // The whole recorded note, by section, for the details modal (empty sections are hidden there).
+    sections: {
+      motif: [n.motif, n.depuis && `Depuis : ${n.depuis}`, n.evolution && `Évolution : ${n.evolution}`].filter(Boolean).join(' · '),
+      histoire: String(n.histoire || '').trim(),
+      examen: String(n.examen || '').trim(),
+      diagnostics: n.diagnostics,
+      conduite: String(n.conduite || '').trim(),
+      traitements: treatments.map((r) => ({ medicament: r.medicament.trim(), posologie: r.posologie?.trim() || '', duree: r.duree?.trim() || '' })),
+      examens: n.examens,
+      documents: n.documents,
+      suivi: { date: n.followUpDate || '', notes: String(n.followUpNotes || '').trim() },
+      constantes: [
+        v.bloodPressureSystolic && v.bloodPressureDiastolic ? { label: 'Tension', value: `${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}` } : null,
+        String(v.heartRate || '').trim() ? { label: 'Pouls', value: `${v.heartRate} bpm` } : null,
+        String(v.temperature || '').trim() ? { label: 'Température', value: `${v.temperature} °C` } : null,
+        String(v.oxygenSaturation || '').trim() ? { label: 'SpO₂', value: `${v.oxygenSaturation} %` } : null,
+        String(v.weight || '').trim() ? { label: 'Poids', value: `${v.weight} kg` } : null,
+        String(v.height || '').trim() ? { label: 'Taille', value: `${v.height} cm` } : null,
+      ].filter(Boolean),
+    },
     tags: [],
     vitals: {
       temp: withUnit(v.temperature, ' °C'),
@@ -269,7 +299,7 @@ function TimelineEvent({ event, index, onViewDetails }) {
       transition={{ duration: 0.25, delay: index * 0.03 }}
       className="relative w-full pl-8 pb-3.5 last:pb-0"
     >
-      <span className="absolute left-[5px] top-[15px] z-10 w-2.5 h-2.5 rounded-full bg-slate-900" />
+      <span className="absolute left-[5px] top-[15px] z-10 w-2.5 h-2.5 rounded-full bg-[#2563EB]" />
       <div
         className={`w-full rounded-[0.625rem] border-2 bg-white shadow-sm transition-all duration-200 ${
           isExpanded ? 'border-slate-300 shadow-md' : 'border-[#e2e8f0] hover:border-slate-300 hover:shadow-md'
@@ -387,6 +417,28 @@ function QuickAction({ icon, title, description, isPrimary, onClick }) {
 }
 
 // --- Event Details Modal ---
+// Same labeled-section pattern as the finish-consultation summary (MOTIF / DIAGNOSTIC / TRAITEMENT /
+// SUIVI), for a consultation that is already recorded. Sections with nothing recorded are hidden.
+function DetailRow({ label, children }) {
+  return (
+    <div className="grid grid-cols-[110px_1fr] gap-3 py-3 text-[13.5px]">
+      <span className="pt-0.5 text-[12px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <div className="min-w-0 whitespace-pre-wrap break-words text-slate-800">{children}</div>
+    </div>
+  )
+}
+
+// Relative wording for the follow-up date, so the actionable part reads at a glance.
+function followUpTiming(dateStr) {
+  const target = new Date(`${dateStr}T12:00:00`)
+  if (Number.isNaN(target.getTime())) return null
+  const today = new Date(); today.setHours(12, 0, 0, 0)
+  const days = Math.round((target - today) / 86400000)
+  if (days === 0) return { label: "Aujourd'hui", tone: 'amber' }
+  if (days > 0) return { label: `Dans ${days} jour${days > 1 ? 's' : ''}`, tone: 'neutral' }
+  return { label: `Dépassé de ${-days} jour${-days > 1 ? 's' : ''}`, tone: 'amber' }
+}
+
 function EventDetailsModal({ event, onClose }) {
   const getEventConfig = () => {
     switch (event.type) {
@@ -398,12 +450,17 @@ function EventDetailsModal({ event, onClose }) {
     }
   }
   const config = getEventConfig()
+  const s = event.sections
 
   useEffect(() => {
     const handleEsc = (e) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', handleEsc)
     return () => document.removeEventListener('keydown', handleEsc)
   }, [onClose])
+
+  const followUp = s?.suivi?.date || s?.suivi?.notes ? s.suivi : null
+  const timing = followUp?.date ? followUpTiming(followUp.date) : null
+  const hasRows = s && (s.motif || s.histoire || s.examen || s.diagnostics.length || s.conduite || s.traitements.length || s.examens.length || s.documents.length)
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -419,9 +476,9 @@ function EventDetailsModal({ event, onClose }) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="relative w-full max-w-2xl bg-white rounded-[21px] shadow-[0_12px_48px_rgba(0,0,0,0.12)] overflow-hidden"
+        className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-[21px] bg-white shadow-[0_12px_48px_rgba(0,0,0,0.12)]"
       >
-        <div className="flex items-center justify-between p-5 border-b border-[#e2e8f0]">
+        <div className="flex flex-shrink-0 items-center justify-between p-5 border-b border-[#e2e8f0]">
           <div className="flex items-center gap-3">
             <div
               className="w-9 h-9 rounded-full flex items-center justify-center"
@@ -431,15 +488,16 @@ function EventDetailsModal({ event, onClose }) {
             </div>
             <div>
               <h2 className="text-base font-semibold text-slate-900">{event.title}</h2>
-              <p className="text-xs text-slate-500">{event.date} à {event.time} • {event.doctor}</p>
+              <p className="text-xs text-slate-500">{event.date} à {event.time}{event.doctor ? ` • ${event.doctor}` : ''}</p>
             </div>
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all">
             <X className="w-4 h-4 text-slate-600" />
           </button>
         </div>
-        <div className="p-5">
-          <div className="flex flex-wrap gap-2 mb-4">
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+          <div className="flex flex-wrap gap-2">
             {event.tags?.map(tag => (
               <span key={tag} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600">{tag}</span>
             ))}
@@ -450,18 +508,97 @@ function EventDetailsModal({ event, onClose }) {
               {config.label}
             </span>
           </div>
-          <h3 className="text-xs font-semibold text-slate-900 mb-2">Détails</h3>
-          <pre className="whitespace-pre-wrap text-xs text-slate-600 bg-slate-50 p-3 rounded-xl font-sans leading-relaxed border border-[#e2e8f0]">
-            {event.details}
-          </pre>
+
+          {s ? (
+            <>
+              {/* Constantes: the vitals shown on the collapsed card, carried into the note */}
+              {s.constantes.length > 0 && (
+                <Card tone="muted" className="p-4">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Constantes</p>
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    {s.constantes.map((c) => (
+                      <span key={c.label} className="inline-flex items-baseline gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{c.label}</span>
+                        <span className="text-[13px] font-bold text-slate-800">{c.value}</span>
+                      </span>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {/* The recorded note, section by section */}
+              {hasRows ? (
+                <Card tone="muted" className="divide-y divide-slate-200 px-5 py-2">
+                  {s.motif && <DetailRow label="Motif">{s.motif}</DetailRow>}
+                  {s.histoire && <DetailRow label="Symptômes">{s.histoire}</DetailRow>}
+                  {s.examen && <DetailRow label="Examen clinique">{s.examen}</DetailRow>}
+                  {s.diagnostics.length > 0 && (
+                    <DetailRow label="Diagnostic">
+                      <ul className="space-y-1">{s.diagnostics.map((d) => <li key={d}>{d}</li>)}</ul>
+                    </DetailRow>
+                  )}
+                  {s.conduite && <DetailRow label="Conduite à tenir">{s.conduite}</DetailRow>}
+                  {s.traitements.length > 0 && (
+                    <DetailRow label="Traitement">
+                      <ul className="space-y-1.5">
+                        {s.traitements.map((t, i) => (
+                          <li key={i}>
+                            <span className="font-semibold">{t.medicament}</span>
+                            {(t.posologie || t.duree) && <span className="text-slate-500"> · {[t.posologie, t.duree].filter(Boolean).join(' · ')}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </DetailRow>
+                  )}
+                  {s.examens.length > 0 && (
+                    <DetailRow label="Examens">
+                      <div className="flex flex-wrap gap-1.5">{s.examens.map((x) => <Badge key={x} tone="neutral" size="md">{x}</Badge>)}</div>
+                    </DetailRow>
+                  )}
+                  {s.documents.length > 0 && (
+                    <DetailRow label="Documents">
+                      <div className="flex flex-wrap gap-1.5">{s.documents.map((x) => <Badge key={x} tone="neutral" size="md">{x}</Badge>)}</div>
+                    </DetailRow>
+                  )}
+                </Card>
+              ) : (
+                !s.constantes.length && !followUp && <p className="text-sm italic text-slate-500">Aucune information saisie pour cette consultation.</p>
+              )}
+
+              {/* Suivi: the one actionable item (a future date), set apart from the historical fields */}
+              {followUp && (
+                <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3.5">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-[#2563EB] ring-1 ring-blue-200">
+                    <CalendarClock className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[12px] font-bold uppercase tracking-wide text-blue-700">Suivi</span>
+                      {timing && <Badge tone={timing.tone}>{timing.label}</Badge>}
+                    </div>
+                    {followUp.date && (
+                      <p className="mt-1 text-[15px] font-bold text-slate-900">
+                        {new Date(`${followUp.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                    )}
+                    {followUp.notes && <p className="mt-1 whitespace-pre-wrap break-words text-[13.5px] text-slate-700">{followUp.notes}</p>}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <h3 className="text-xs font-semibold text-slate-900">Détails</h3>
+              <pre className="whitespace-pre-wrap rounded-xl border border-[#e2e8f0] bg-slate-50 p-3 font-sans text-xs leading-relaxed text-slate-600">
+                {event.details}
+              </pre>
+            </>
+          )}
         </div>
-        <div className="flex justify-end gap-2 p-5 border-t border-[#e2e8f0] bg-[#f8fafc]">
-          <button onClick={onClose} className="px-3.5 py-2 text-xs text-slate-700 bg-white border border-[#e2e8f0] rounded-xl font-medium hover:bg-slate-50 hover:border-slate-400 transition-all">
-            Fermer
-          </button>
-          <button onClick={() => { try { window.print() } catch(e){} }} className="px-3.5 py-2 text-xs text-white bg-[#2563eb] border border-[#2563eb] rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all shadow-[0_2px_8px_rgba(37,99,235,0.2)]">
-            Imprimer
-          </button>
+
+        <div className="flex flex-shrink-0 justify-end gap-2 p-5 border-t border-[#e2e8f0] bg-[#f8fafc]">
+          <Button variant="secondary" onClick={onClose}>Fermer</Button>
+          <Button variant="primary" onClick={() => { try { window.print() } catch(e){} }}>Imprimer</Button>
         </div>
       </motion.div>
     </div>
@@ -469,7 +606,7 @@ function EventDetailsModal({ event, onClose }) {
 }
 
 // --- Simple Modal ---
-function SimpleModal({ title, description, icon, color, onClose, onSave, children, saveText = "Enregistrer", saveButtonClass = "", footer = null }) {
+function SimpleModal({ title, description, icon, onClose, onSave, children, saveText = "Enregistrer", footer = null }) {
   useEffect(() => {
     const handleEsc = (e) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', handleEsc)
@@ -494,11 +631,8 @@ function SimpleModal({ title, description, icon, color, onClose, onSave, childre
       >
         <div className="flex items-center justify-between p-5 border-b border-[#e2e8f0]">
           <div className="flex items-center gap-3">
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: `${color}10` }}
-            >
-              <div style={{ color }}>{icon}</div>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center bg-slate-100 text-slate-700">
+              {icon}
             </div>
             <div>
               <h2 className="text-base font-semibold text-slate-900">{title}</h2>
@@ -513,12 +647,8 @@ function SimpleModal({ title, description, icon, color, onClose, onSave, childre
         <div className="flex items-center justify-between gap-2 p-5 border-t border-[#e2e8f0] bg-[#f8fafc]">
           <div className="flex-1">{footer}</div>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-3.5 py-2 text-xs text-slate-700 bg-white border border-[#e2e8f0] rounded-xl font-medium hover:bg-slate-50 hover:border-slate-400 transition-all">
-              Annuler
-            </button>
-            <button onClick={onSave} className={`px-3.5 py-2 text-xs text-white rounded-xl font-medium transition-all ${saveButtonClass || 'bg-[#2563eb] border border-[#2563eb] hover:bg-blue-700 hover:border-blue-700 shadow-[0_2px_8px_rgba(37,99,235,0.2)]'}`}>
-              {saveText}
-            </button>
+            <Button variant="secondary" onClick={onClose}>Annuler</Button>
+            <Button variant="primary" onClick={onSave}>{saveText}</Button>
           </div>
         </div>
       </motion.div>
@@ -555,9 +685,7 @@ function SuccessModal({ message, onClose }) {
         </div>
         <h2 className="text-base font-semibold text-slate-900 mb-2">Succès !</h2>
         <p className="text-xs text-slate-600 mb-5">{message}</p>
-        <button onClick={onClose} className="w-full px-4 py-2 text-xs text-white bg-[#2563eb] border border-[#2563eb] rounded-xl font-medium hover:bg-blue-700 hover:border-blue-700 transition-all shadow-[0_2px_8px_rgba(37,99,235,0.2)]">
-          Continuer
-        </button>
+        <Button variant="primary" className="w-full" onClick={onClose}>Continuer</Button>
       </motion.div>
     </div>
   )
@@ -648,13 +776,26 @@ function EmptyState({ title, description, icon: Icon }) {
   )
 }
 
+function DossierRecordList({ title, subtitle, icon: Icon, items, loading, emptyTitle, emptyDescription, tone = 'blue' }) {
+  const tones = {
+    blue: 'bg-blue-50 text-blue-600',
+    violet: 'bg-violet-50 text-violet-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+    sky: 'bg-sky-50 text-sky-600',
+  }
+  return <div className="space-y-5">
+    <div className="flex items-start justify-between gap-3"><div><h2 className="text-[16px] font-bold text-slate-900">{title}</h2><p className="mt-0.5 text-[13px] text-slate-500">{subtitle}</p></div></div>
+    {loading ? <EmptyState icon={Activity} title="Chargement…" description="Récupération des éléments du dossier." /> : items.length === 0 ? <EmptyState icon={Icon} title={emptyTitle} description={emptyDescription} /> : <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{items.map((item) => <button key={item.id} type="button" className="group rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm"><div className="flex items-start gap-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones[tone]}`}><Icon className="h-4 w-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-[14px] font-semibold text-slate-900">{item.nom_fichier || item.name || item.type_document || title}</p><p className="mt-1 text-[12px] text-slate-500">{item.created_at ? new Date(item.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Document du dossier'}</p></div><ChevronRight className="mt-1 h-4 w-4 text-slate-300 transition group-hover:text-slate-600" /></div></button>)}</div>}
+  </div>
+}
+
 
 
 // --- Main Component ---
 export default function PatientWorkspace() {
   const navigate = useNavigate()
   const { id: patientIdParam } = useParams()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const startConsultation = searchParams.get('startConsultation') === 'true'
   const visitId = searchParams.get('visitId')
   const { profile, updateVisitStatus, notify } = useAppContext()
@@ -664,11 +805,15 @@ export default function PatientWorkspace() {
   // --- State ---
   const actionParam = searchParams.get('action')
   const [activeTab, setActiveTab] = useState('Historique')
+  const reduceMotion = useReducedMotion()
   const [consultationStatus, setConsultationStatus] = useState(startConsultation ? 'in_progress' : 'not_started')
+  const allowLeaveRef = useRef(false)
   const [showPatientSidebar, setShowPatientSidebar] = useState(false)
   const [timerSeconds, setTimerSeconds] = useState(0)
   const [selectedEvent, setSelectedEvent] = useState(null)
   const [showModal, setShowModal] = useState(searchParams.get('action') || null)
+  const acteScope = usageScope(profile?.clinic_id || profile?.cabinet_id, profile?.id)
+  const acteSuggestionsQ = useActeSuggestions(showModal === 'addActe', acteScope)
   const [showSuccess, setShowSuccess] = useState(null)
   const [showConsultationModal, setShowConsultationModal] = useState(startConsultation)
 
@@ -741,6 +886,7 @@ export default function PatientWorkspace() {
 
   // --- Handlers ---
   const handleStartConsultation = useCallback(() => {
+    allowLeaveRef.current = false
     setConsultationStatus('in_progress')
     setReviewRequested(false)
     setShowConsultationModal(true)
@@ -753,13 +899,22 @@ export default function PatientWorkspace() {
 
   const handleConfirmEndConsultation = useCallback((result) => {
     const handoff = result?.handoff || 'none'
+    // The consultation is finalized (saved server-side): leaving is intended. Set
+    // before navigating because the blocker below still sees 'in_progress' until
+    // the next render.
+    allowLeaveRef.current = true
     setTimerSeconds(0)
+    // The consultation is finished: nothing of it may linger. Clear the in-memory
+    // note (so it can never seed another draft) and the cached open draft (so the
+    // "Consultation en cours / Reprendre" banner cannot flash from a stale cache).
+    setNote(normalizeNote({}))
+    queryClient.setQueryData(['encounter-draft', patientIdParam], null)
     queryClient.invalidateQueries({ queryKey: ['encounters', patientIdParam] })
+    queryClient.invalidateQueries({ queryKey: ['patient-factures'] })
     queryClient.invalidateQueries({ queryKey: ['encounter-draft', patientIdParam] })
     queryClient.invalidateQueries({ queryKey: ['consult-ctx-vitals', patientIdParam] })
     if (handoff === 'none') {
       setConsultationStatus('not_started')
-      setNote(normalizeNote({}))
       notify({ title: 'Consultation enregistrée', description: 'Ajoutée à l\'historique du patient.', tone: 'success' })
       return
     }
@@ -767,6 +922,7 @@ export default function PatientWorkspace() {
     if (visitId) {
       updateVisitStatus(visitId, handoff === 'billing' ? VISIT_STATUSES.BILLING : VISIT_STATUSES.COMPLETED, {
         amount: handoff === 'billing' ? billingAmount : 0,
+        remaining_balance: handoff === 'billing' ? billingAmount : 0,
         sessionActes,
       })
     }
@@ -775,7 +931,9 @@ export default function PatientWorkspace() {
       description: handoff === 'billing' ? 'Le patient a été envoyé à la caisse.' : 'Aucun paiement requis.',
       tone: 'success',
     })
-    navigate('/dashboard')
+    // replace: the "?startConsultation=true" entry must not stay in history, or Back would
+    // silently start a new consultation on this patient.
+    navigate('/dashboard', { replace: true })
   }, [visitId, updateVisitStatus, notify, navigate, sessionActes, queryClient, patientIdParam, billingAmount])
 
   const handleSavePrescription = useCallback(() => {
@@ -805,6 +963,8 @@ export default function PatientWorkspace() {
   const handleSaveActe = useCallback(() => {
     const montantNum = parseFloat(acteForm.montant) || 0
     if (acteForm.name.trim()) {
+      recordActeUse(acteScope, { name: acteForm.name, montant: montantNum })
+      queryClient.invalidateQueries({ queryKey: ['acte-suggestions'] })
       setSessionActes(prev => [
         ...prev,
         { id: `acte_${Date.now()}`, name: acteForm.name.trim(), description: acteForm.description.trim(), montant: montantNum }
@@ -813,7 +973,7 @@ export default function PatientWorkspace() {
     setShowModal(null)
     setShowSuccess('Acte ajouté avec succès !')
     setActeForm({ name: '', description: '', montant: '' })
-  }, [acteForm])
+  }, [acteForm, acteScope, queryClient])
 
   const encountersQ = useQuery({
     queryKey: ['encounters', patientIdParam],
@@ -824,8 +984,35 @@ export default function PatientWorkspace() {
     queryKey: ['encounter-draft', patientIdParam],
     queryFn: () => getOpenDraft(patientIdParam),
     enabled: Boolean(patientIdParam) && !showConsultationModal,
+    refetchOnMount: 'always',
   })
   const timelineEvents = useMemo(() => (encountersQ.data || []).map(encounterToEvent), [encountersQ.data])
+  const documentsQ = useQuery({
+    queryKey: ['patient-documents', patientIdParam],
+    queryFn: () => getDocuments(patientIdParam),
+    enabled: Boolean(patientIdParam),
+  })
+  const ordonnancesQ = useQuery({
+    queryKey: ['patient-ordonnances', profile?.cabinet_id, patientIdParam],
+    queryFn: () => getOrdonnances(profile.cabinet_id, patientIdParam),
+    enabled: Boolean(profile?.cabinet_id && patientIdParam),
+  })
+  // Real dossier data. Ordonnances / examens come from this patient's completed consultations;
+  // factures from the billing data (payments) for this patient in this clinic.
+  const clinicId = profile?.clinic_id || profile?.cabinet_id
+  const derivedOrdonnances = useMemo(() => ordonnancesFromEncounters(encountersQ.data || []), [encountersQ.data])
+  const derivedExamens = useMemo(() => examensFromEncounters(encountersQ.data || []), [encountersQ.data])
+  const facturesQ = useQuery({
+    queryKey: ['patient-factures', clinicId, patientIdParam],
+    queryFn: () => fetchFactures(clinicId, patientIdParam),
+    enabled: Boolean(clinicId && patientIdParam),
+  })
+  const documents = documentsQ.data || []
+  const documentsByKind = useMemo(() => ({
+    examens: documents.filter((doc) => /exam|analyse|laboratoire|bilan/i.test(doc.type_document || doc.nom_fichier || '')),
+    imagerie: documents.filter((doc) => /imagerie|radio|irm|scanner|echo/i.test(doc.type_document || doc.nom_fichier || '')),
+    factures: documents.filter((doc) => /facture|recu|paiement/i.test(doc.type_document || doc.nom_fichier || '')),
+  }), [documents])
 
   const draft = useEncounterDraft({
     patientId: patientIdParam,
@@ -841,11 +1028,25 @@ export default function PatientWorkspace() {
   const chronicDisease = patient?.antecedents || '—'
   const currentTreatment = '—'
   const emergencyContact = patient?.contact_urgence || '—'
-  const isConsultationActive = consultationStatus === 'in_progress'
+  // "En consultation" (timer, + Acte, ring) only while a real consultation is live: the sheet is
+  // open or an open draft exists. A leftover 'in_progress' flag alone (e.g. from the URL) is not enough.
+  const isConsultationActive = isConsultationLive({ status: consultationStatus, sheetOpen: showConsultationModal, hasOpenDraft: Boolean(openDraftQ.data), fetchingDraft: openDraftQ.isFetching })
 
   // --- Blocage navigation interne (React Router useBlocker) ---
-  // Bloque dès qu'une consultation est active, indépendamment de isDirty
-  const blocker = useBlocker(consultationStatus === 'in_progress')
+  // Bloque dès qu'une consultation est active, indépendamment de isDirty, sauf
+  // quand la consultation vient d'être terminée (allowLeaveRef, voir plus haut).
+  // Only leaving this page is guarded (a search-param change on the same page is not).
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => consultationStatus === 'in_progress' && !allowLeaveRef.current && currentLocation.pathname !== nextLocation.pathname)
+
+  // "?startConsultation=true" only means "open the sheet on arrival". Drop it once consumed so
+  // reloading, or coming back with the browser's Back button, cannot silently start another one.
+  useEffect(() => {
+    if (startConsultation) setSearchParams((p) => { const n = new URLSearchParams(p); n.delete('startConsultation'); return n }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // "Enregistrer et quitter" : écrit le brouillon en cours (même chemin que l'autosave).
+  const handleManualSave = useCallback(() => draft.flush(), [draft.flush])
 
   // --- Blocage fermeture onglet / rafraîchissement ---
   useEffect(() => {
@@ -910,7 +1111,7 @@ export default function PatientWorkspace() {
 
           {/* Center: Statut de consultation / Timer */}
           <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none z-10 hidden md:flex">
-            {consultationStatus === 'in_progress' && (
+            {isConsultationActive && (
               <motion.div
                 initial={{ opacity: 0, y: -2 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -936,7 +1137,7 @@ export default function PatientWorkspace() {
 
           {/* Bloc actions côté droit */}
           <div className="flex items-center gap-2.5 shrink-0">
-            {consultationStatus === 'in_progress' ? (
+            {isConsultationActive ? (
               <>
 
                 {/* Badge total actes — lecture seule, masqué si 0 */}
@@ -962,49 +1163,29 @@ export default function PatientWorkspace() {
                 )}
 
                 {/* Bouton + Acte (Même style que "Voir dossier") */}
-                <button
-                  onClick={() => setShowModal('addActe')}
-                  className="h-10 px-4 rounded-[0.625rem] font-bold text-[13px] bg-white text-[#334155] border-2 border-[#cbd5e1] hover:bg-[#f1f5f9] hover:border-[#94a3b8] transition-all flex items-center gap-1.5 shadow-sm hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <Plus className="w-4 h-4 text-slate-600" />
+                <Button variant="secondary" size="sm" className="h-10" onClick={() => setShowModal('addActe')}>
+                  <Plus className="w-4 h-4" />
                   Acte
-                </button>
+                </Button>
 
                 {/* Bouton Dossier (Patient Infos) */}
-                <button
-                  onClick={() => setShowPatientSidebar(true)}
-                  className="h-10 px-4 rounded-[0.625rem] font-bold text-[13px] bg-white text-[#334155] border-2 border-[#cbd5e1] hover:bg-[#f1f5f9] hover:border-[#94a3b8] transition-all flex items-center gap-1.5 shadow-sm hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <User className="w-4 h-4 text-slate-600" />
+                <Button variant="secondary" size="sm" className="h-10" onClick={() => setShowPatientSidebar(true)}>
+                  <User className="w-4 h-4" />
                   Dossier patient
-                </button>
+                </Button>
 
-                {/* Bouton Terminer / Enregistrer (Même style que "Commencer") */}
-                <button
-                  onClick={handleEndConsultation}
-                  className="h-10 px-5 rounded-[0.625rem] font-bold text-[13px] bg-[#2563eb] text-white border-2 border-[#60a5fa] hover:bg-[#1e40af] hover:border-[#1e3a8a] transition-all flex items-center gap-2 shadow-[0_3px_10px_rgba(37,99,235,0.25)] hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <Save className="w-4 h-4 text-white" />
-                  Enregistrer
-                </button>
+                {/* Terminer : ouvre la revue de fin de consultation (récapitulatif + confirmation) */}
+                <Button variant="primary" size="sm" className="h-10" onClick={handleEndConsultation}>
+                  <Save className="w-4 h-4" />
+                  Terminer la consultation
+                </Button>
               </>
             ) : (
               <>
-                <button
-                  onClick={() => setShowPatientSidebar(true)}
-                  className="h-10 px-4 rounded-[0.625rem] font-bold text-[13px] bg-white text-[#334155] border-2 border-[#cbd5e1] hover:bg-[#f1f5f9] hover:border-[#94a3b8] transition-all flex items-center gap-1.5 shadow-sm hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <User className="w-4 h-4 text-slate-600" />
-                  Dossier patient
-                </button>
-                
-                <button
-                  onClick={handleStartConsultation}
-                  className="h-10 px-5 rounded-[0.625rem] font-bold text-[13px] bg-[#2563eb] text-white border-2 border-[#60a5fa] hover:bg-[#1e40af] hover:border-[#1e3a8a] transition-all flex items-center gap-2 shadow-[0_3px_10px_rgba(37,99,235,0.25)] hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <Save className="w-4 h-4 text-white" />
-                  Enregistrer
-                </button>
+                <Button variant="accent" size="sm" className="h-10" onClick={handleStartConsultation}>
+                  <Plus className="w-4 h-4" />
+                  Nouvelle consultation
+                </Button>
               </>
             )}
           </div>
@@ -1018,36 +1199,90 @@ export default function PatientWorkspace() {
         transition={{ duration: 0.35, delay: 0.05 }}
         className="w-full px-6 pt-4"
       >
-        <div className="w-full flex items-center gap-4 rounded-[0.625rem] border-2 border-[#e2e8f0] bg-white px-4 py-3 shadow-sm hover:shadow-md transition-shadow duration-300">
-          <div
-            className={`relative w-11 h-11 rounded-full bg-gradient-to-br from-slate-800 to-slate-600 flex items-center justify-center text-white text-[14px] font-bold flex-shrink-0 shadow-sm transition-all ${
-              isConsultationActive ? 'ring-2 ring-emerald-400 ring-offset-2' : ''
-            }`}
-          >
-            {initials}
+        <div className="w-full flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm hover:shadow-md transition-shadow duration-300">
+          <div className="relative flex-shrink-0">
+            <div
+              className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-600 flex items-center justify-center text-white text-[18px] font-extrabold tracking-tight shadow-md ${
+                isConsultationActive ? 'ring-2 ring-emerald-400 ring-offset-2' : ''
+              }`}
+            >
+              {initials}
+            </div>
+            {isConsultationActive && (
+              <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70 animate-ping" />
+                <span className="relative inline-flex h-4 w-4 rounded-full bg-emerald-500 border-2 border-white" />
+              </span>
+            )}
           </div>
+
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-bold text-[#1e293b] truncate leading-tight">
-              {patient.prenom} {patient.nom}
-            </p>
-            <div className="flex items-center gap-3 flex-wrap mt-1 text-[12.5px] text-slate-500">
-              {age !== null && (
-                <span className="inline-flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-slate-400" />
-                  {age} ans
-                </span>
-              )}
-              <span className="inline-flex items-center gap-1">
-                <User className="w-3 h-3 text-slate-400" />
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-[17px] font-bold text-slate-900 tracking-tight truncate">
+                {patient.prenom} {patient.nom}
+              </h1>
+              <span className="text-[13px] text-slate-400 font-medium">
+                {age !== null ? `${age} ans` : null}
+              </span>
+              <span className="text-[12px] text-slate-400">•</span>
+              <span className="text-[13px] text-slate-500 font-medium">
                 {getGenderLabel(patient.sexe)}
               </span>
-              {patient.cin && (
+            </div>
+            <div className="flex items-center gap-3 flex-wrap mt-1 text-[12.5px] text-slate-500">
+              {patient.telephone && (
                 <span className="inline-flex items-center gap-1">
-                  <ContactRound className="w-3 h-3 text-slate-400" />
-                  CIN {patient.cin}
+                  <Phone className="w-3.5 h-3.5 text-slate-400" />
+                  {patient.telephone}
                 </span>
               )}
+              {patient.cin && (
+                <>
+                  <span className="text-slate-300">·</span>
+                  <span className="font-medium">{patient.cin}</span>
+                </>
+              )}
+              <span className="text-slate-300">·</span>
+              <span className="inline-flex items-center gap-1">
+                <CalendarClock className="w-3.5 h-3.5 text-slate-400" />
+                Depuis {formatPatientSince(patient.created_at)}
+              </span>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap sm:gap-2">
+            {patient.groupe_sanguin && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-100 text-[12.5px] font-bold">
+              <Droplets className="w-3.5 h-3.5 text-rose-500" />
+              {patient.groupe_sanguin}
+            </span>
+            )}
+
+            {(patient.allergies && patient.allergies.trim() && patient.allergies.toLowerCase() !== 'aucune') ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-red-50 text-red-700 border border-red-200 text-[12.5px] font-semibold" title={patient.allergies}>
+              <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+              <span className="truncate max-w-[140px]">{patient.allergies}</span>
+            </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-50 text-slate-500 border border-slate-200 text-[12.5px] font-medium opacity-75">
+              <Shield className="w-3.5 h-3.5 text-slate-400" />
+              Aucune allergie
+            </span>
+            )}
+
+            {chronicDisease && chronicDisease !== '—' ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-[12.5px] font-semibold" title={chronicDisease}>
+              <HeartPulse className="w-3.5 h-3.5 text-amber-600" />
+              <span className="truncate max-w-[160px]">{chronicDisease}</span>
+            </span>
+            ) : null}
+
+            {(patient.mutuelle || patient.assurance) && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-sky-50 text-sky-700 border border-sky-100 text-[12.5px] font-semibold" title={patient.mutuelle || patient.assurance}>
+              <Shield className="w-3.5 h-3.5 text-sky-500" />
+              <span className="truncate max-w-[120px]">{patient.mutuelle || patient.assurance}</span>
+            </span>
+            )}
           </div>
         </div>
       </motion.div>
@@ -1063,33 +1298,51 @@ export default function PatientWorkspace() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.1 }}
             >
-              <nav role="tablist" className="bg-gray-100 rounded-full p-1 flex w-full shadow-inner">
-                {['Historique', 'Documents'].map((tab) => (
+              <nav role="tablist" className="grid w-full grid-cols-2 gap-1 rounded-2xl bg-gray-100 p-1 shadow-inner sm:grid-cols-5">
+                {[
+                  { label: 'Historique', icon: Activity },
+                  { label: 'Ordonnances', icon: Pill, count: derivedOrdonnances.length + (ordonnancesQ.data?.length || 0) },
+                  { label: 'Examens', icon: TestTube2, count: derivedExamens.reduce((n, e) => n + e.items.length, 0) + documentsByKind.examens.length },
+                  { label: 'Imagerie', icon: ImageIcon, count: documentsByKind.imagerie.length },
+                  { label: 'Factures', icon: FileCheck2, count: (facturesQ.data?.length || 0) + documentsByKind.factures.length },
+                ].map(({ label: tab, icon: Icon, count }) => (
                   <button
                     key={tab}
                     role="tab"
                     aria-selected={activeTab === tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`flex-1 px-5 py-2 text-[13.5px] font-semibold rounded-full transition-all duration-200 ${
-                      activeTab === tab
-                        ? 'bg-white text-slate-900 shadow-[0_2px_6px_rgba(0,0,0,0.08)]'
-                        : 'text-slate-500 hover:text-slate-700'
+                    className={`relative flex min-w-0 items-center justify-center gap-1.5 px-3 py-2 text-[13px] font-semibold rounded-xl transition-colors duration-200 ${
+                      activeTab === tab ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
                     }`}
                   >
-                    {tab}
+                    {activeTab === tab && (
+                      // One shared pill that glides between tabs (same motion as the Facturation tabs)
+                      <motion.span
+                        layoutId="dossier-tab-pill"
+                        transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }}
+                        className="absolute inset-0 rounded-xl bg-white shadow-[0_2px_6px_rgba(0,0,0,0.08)]"
+                      />
+                    )}
+                    <span className="relative z-10 flex min-w-0 items-center gap-1.5">
+                      <Icon className="h-3.5 w-3.5" />
+                      {tab}
+                      {count ? <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${activeTab === tab ? 'bg-slate-100 text-slate-600' : 'bg-slate-200/80 text-slate-500'}`}>{count}</span> : null}
+                    </span>
                   </button>
                 ))}
               </nav>
             </motion.div>
 
             {/* --- Tab Content --- */}
-            <AnimatePresence mode="wait">
+            {/* Same transition as the Facturation tabs: the outgoing tab fades out, the next fades in
+                while rising 8px (~0.2 s). Off with prefers-reduced-motion. */}
+            <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={activeTab}
-                initial={{ opacity: 0, y: 8 }}
+                initial={reduceMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.25 }}
+                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                transition={{ duration: reduceMotion ? 0 : 0.2, ease: 'easeOut' }}
               >
                 {/* --- History Content --- */}
                 {activeTab === 'Historique' && (
@@ -1103,13 +1356,6 @@ export default function PatientWorkspace() {
                             Chronologie des consultations, actes et ordonnances
                           </p>
                         </div>
-                        <button
-                          onClick={handleStartConsultation}
-                          className="h-11 px-5 rounded-[0.625rem] font-bold text-[14px] bg-black text-white hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm hover:-translate-y-0.5 active:translate-y-0 flex-shrink-0"
-                        >
-                          <Plus className="w-4 h-4" />
-                          Nouvelle consultation
-                        </button>
                       </div>
                     {openDraftQ.data && !showConsultationModal && (
                       <div className="flex items-center justify-between gap-3 rounded-[0.625rem] border border-amber-200 bg-amber-50 px-4 py-3">
@@ -1139,23 +1385,36 @@ export default function PatientWorkspace() {
                   </div>
                 )}
 
-                {/* --- Documents Content --- */}
-                {activeTab === 'Documents' && (
-                  <div className="space-y-5">
-                    {false ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {DOCUMENTS.map((doc) => (
-                          <DocumentCard key={doc.id} doc={doc} />
-                        ))}
-                      </div>
-                    ) : (
-                      <EmptyState
-                        icon={FileText}
-                        title="Aucun document disponible"
-                        description="Ajoutez des documents pour ce patient"
-                      />
-                    )}
-                  </div>
+                {activeTab === 'Ordonnances' && (
+                  <OrdonnancesList
+                    items={derivedOrdonnances}
+                    loading={encountersQ.isLoading}
+                    extra={(ordonnancesQ.data || []).length > 0 ? <DossierRecordList title="Ordonnances importées" subtitle="Documents du dossier" icon={Pill} items={ordonnancesQ.data} loading={false} emptyTitle="" emptyDescription="" tone="violet" /> : null}
+                  />
+                )}
+
+                {activeTab === 'Examens' && (
+                  <ExamensList
+                    items={derivedExamens}
+                    loading={encountersQ.isLoading}
+                    extra={documentsByKind.examens.length > 0 ? <DossierRecordList title="Résultats importés" subtitle="Documents du dossier" icon={TestTube2} items={documentsByKind.examens} loading={false} emptyTitle="" emptyDescription="" tone="emerald" /> : null}
+                  />
+                )}
+
+                {activeTab === 'Imagerie' && (
+                  <ImagerieList
+                    extra={documentsByKind.imagerie.length > 0 ? <DossierRecordList title="Documents d’imagerie" subtitle="Documents du dossier" icon={ImageIcon} items={documentsByKind.imagerie} loading={false} emptyTitle="" emptyDescription="" tone="sky" /> : null}
+                  />
+                )}
+
+                {activeTab === 'Factures' && (
+                  <FacturesList
+                    items={facturesQ.data || []}
+                    loading={facturesQ.isLoading}
+                    error={facturesQ.isError}
+                    onOpenFacturation={() => navigate('/facturation')}
+                    extra={documentsByKind.factures.length > 0 ? <DossierRecordList title="Documents de paiement" subtitle="Documents du dossier" icon={FileCheck2} items={documentsByKind.factures} loading={false} emptyTitle="" emptyDescription="" tone="blue" /> : null}
+                  />
                 )}
               </motion.div>
             </AnimatePresence>
@@ -1194,7 +1453,6 @@ export default function PatientWorkspace() {
             title="Nouvelle Ordonnance"
             description={`Pour ${patient.prenom} ${patient.nom}`}
             icon={<Pill size={18} />}
-            color="#F59E0B"
             onClose={() => setShowModal(null)}
             onSave={handleSavePrescription}
           >
@@ -1231,7 +1489,6 @@ export default function PatientWorkspace() {
             title="Demande d'Analyses"
             description={`Pour ${patient.prenom} ${patient.nom}`}
             icon={<Microscope size={18} />}
-            color="#3B82F6"
             onClose={() => setShowModal(null)}
             onSave={handleSaveLab}
           >
@@ -1272,7 +1529,6 @@ export default function PatientWorkspace() {
             title="Nouveau Compte-Rendu"
             description={`Pour ${patient.prenom} ${patient.nom}`}
             icon={<FileText size={18} />}
-            color="#10B981"
             onClose={() => setShowModal(null)}
             onSave={handleSaveReport}
           >
@@ -1308,7 +1564,6 @@ export default function PatientWorkspace() {
             title="Ajouter un Document"
             description={`Pour ${patient.prenom} ${patient.nom}`}
             icon={<FilePlus size={18} />}
-            color="#6B7280"
             onClose={() => setShowModal(null)}
             onSave={handleSaveDocument}
           >
@@ -1357,20 +1612,21 @@ export default function PatientWorkspace() {
             title="Quitter la consultation ?"
             description="Des données non enregistrées sont présentes"
             icon={<AlertTriangle size={18} />}
-            color="#3b82f6"
             onClose={() => blocker.reset()}
             onSave={async () => {
-              await handleManualSave()
+              try {
+                await handleManualSave()
+              } catch {
+                notify({ title: 'Enregistrement impossible', description: 'Le brouillon n\'a pas pu être enregistré. Vérifiez la connexion puis réessayez.', tone: 'error' })
+                return
+              }
               blocker.proceed()
             }}
             saveText="Enregistrer et quitter"
             footer={
-              <button
-                onClick={() => blocker.proceed()}
-                className="text-[13px] font-medium text-red-500 hover:text-red-700 hover:underline transition-all py-1"
-              >
+              <Button variant="link" className="!text-[13px] text-red-600" onClick={() => blocker.proceed()}>
                 Quitter sans enregistrer
-              </button>
+              </Button>
             }
           >
             <p className="text-sm text-slate-600 leading-relaxed">
@@ -1381,59 +1637,15 @@ export default function PatientWorkspace() {
           </SimpleModal>
         )}
         {showModal === 'addActe' && (
-          <SimpleModal
-            title="Ajouter un Acte"
-            description={`Pour ${patient.prenom} ${patient.nom}`}
-            icon={<ClipboardList size={18} />}
-            color="#8B5CF6"
-            onClose={() => setShowModal(null)}
+          <AddItemModal
+            type="acte"
+            subtitle={`Pour ${patient.prenom} ${patient.nom}`}
+            values={acteForm}
+            onChange={setActeForm}
             onSave={handleSaveActe}
-          >
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Nom de l'acte
-                </label>
-                <input
-                  value={acteForm.name}
-                  onChange={(e) => setActeForm({ ...acteForm, name: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-[#e2e8f0] bg-slate-50 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-xs"
-                  placeholder="Ex: Consultation, Injection..."
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Description
-                </label>
-                <textarea
-                  value={acteForm.description}
-                  onChange={(e) => setActeForm({ ...acteForm, description: e.target.value })}
-                  className="w-full px-3 py-2.5 border border-[#e2e8f0] bg-slate-50 rounded-lg resize-none focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-xs"
-                  rows={2}
-                  placeholder="Détails sur l'acte effectué..."
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
-                  Montant (MAD)
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={acteForm.montant}
-                    onChange={(e) => setActeForm({ ...acteForm, montant: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-[#e2e8f0] bg-slate-50 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-xs pr-14"
-                    placeholder="0"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">
-                    MAD
-                  </span>
-                </div>
-              </div>
-            </div>
-          </SimpleModal>
+            onClose={() => setShowModal(null)}
+            suggestions={acteSuggestionsQ.data || []}
+          />
         )}
         {showSuccess && (
           <SuccessModal message={showSuccess} onClose={() => setShowSuccess(null)} />

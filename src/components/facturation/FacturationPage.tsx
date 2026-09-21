@@ -1,62 +1,56 @@
 import React from 'react';
 import { useFacturationStore } from './store';
+import { useFacturesQuery, useFacturationSync, useFilterOptions } from './queries';
 import { filterFactures } from './selectors';
 import { FilterBar } from './FilterBar';
 import { Overview } from './Overview';
 import { FacturesView } from './FacturesView';
 import { PaiementsView } from './PaiementsView';
 import { DebiteursView } from './DebiteursView';
+import { DetailAvance } from './DetailAvance';
 import { FactureDrawer } from './FactureDrawer';
-import { NouvelleFactureDrawer } from './NouvelleFactureDrawer';
 import { RecuPaiement } from './RecuPaiement';
-import { Download, Plus } from 'lucide-react';
+import { Download } from 'lucide-react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { cn } from '../../lib/utils';
-import { praticiens, assureurs, factureHT, factureTVA, factureNet, facturePaye, factureReste } from './data';
+import { factureNet, facturePaye, factureReste } from './data';
 
 export default function FacturationPage() {
-  const { factures, filters, ui, setTab, setNouvelleFactureOpen, showToast } = useFacturationStore();
+  const { filters, ui, setTab, showToast } = useFacturationStore();
+  const { data: factures = [] } = useFacturesQuery();
+  const { praticiens } = useFilterOptions();
+  useFacturationSync();
+  const reduceMotion = useReducedMotion();
   const filteredFactures = filterFactures(factures, filters);
 
   const handleExportCSV = () => {
-    const headers = ['Numéro', 'Date émission', 'Échéance', 'Patient', 'Réf patient', 'Praticien', 'Assureur', 'Prestations', 'HT', 'Remise %', 'TVA', 'Net', 'Payé', 'Reste', 'Statut'];
-    
-    const rows = filteredFactures.map(f => {
-      const praticien = praticiens.find(p => p.id === f.praticienId)?.nom || '';
-      const assureur = assureurs.find(a => a.id === f.assureurId)?.label || '';
-      const resumeLignes = f.lignes.map(l => `${l.qte}x ${l.libelle}`).join(', ');
-      
-      const rawHt = f.remise < 100 ? factureHT(f) / (1 - f.remise/100) : f.lignes.reduce((sum, l) => sum + (l.pu * l.qte), 0);
-      
-      return [
-        f.numero,
-        f.dateEmission.split('T')[0],
-        f.dateEcheance.split('T')[0],
-        f.patientNom,
-        f.patientRef,
-        praticien,
-        assureur,
-        `"${resumeLignes.replace(/"/g, '""')}"`,
-        rawHt.toFixed(2).replace('.', ','),
-        f.remise.toString(),
-        factureTVA(f).toFixed(2).replace('.', ','),
-        factureNet(f).toFixed(2).replace('.', ','),
-        facturePaye(f).toFixed(2).replace('.', ','),
-        factureReste(f).toFixed(2).replace('.', ','),
-        f.statut
-      ].join(';');
-    });
-    
-    const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\n');
+    const headers = ['Numéro', 'Date', 'Échéance', 'Patient', 'Praticien', 'Mutuelle', 'Facturé', 'Payé', 'Reste', 'Statut'];
+    const money = (n: number) => n.toFixed(2).replace('.', ',');
+
+    const rows = filteredFactures.map(f => [
+      f.numero,
+      f.dateEmission.split('T')[0],
+      f.dateEcheance.split('T')[0],
+      `"${f.patientNom.replace(/"/g, '""')}"`,
+      praticiens.find(p => p.id === f.praticienId)?.nom || '',
+      f.assureurId,
+      money(factureNet(f)),
+      money(facturePaye(f)),
+      money(factureReste(f)),
+      f.statut
+    ].join(';'));
+
+    const csvContent = '﻿' + [headers.join(';'), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const dateStr = new Date().toISOString().split('T')[0];
     link.href = url;
-    link.setAttribute('download', `facturation_${dateStr}.csv`);
+    link.setAttribute('download', `facturation_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+    URL.revokeObjectURL(url);
+
     showToast(`Export de ${filteredFactures.length} factures réussi.`);
   };
 
@@ -66,6 +60,7 @@ export default function FacturationPage() {
       case 'factures': return <FacturesView />;
       case 'paiements': return <PaiementsView />;
       case 'debiteurs': return <DebiteursView />;
+      case 'avance': return <DetailAvance />;
       default: return <Overview />;
     }
   };
@@ -74,40 +69,32 @@ export default function FacturationPage() {
     { id: 'apercu', label: 'Aperçu' },
     { id: 'factures', label: 'Factures' },
     { id: 'paiements', label: 'Paiements' },
-    { id: 'debiteurs', label: 'Débiteurs' }
+    { id: 'debiteurs', label: 'Débiteurs' },
+    { id: 'avance', label: 'Détail avancé' }
   ] as const;
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 font-sans">
       <div className="max-w-[1800px] mx-auto space-y-6">
-        
-        {/* Header */}
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Facturation & Encaissements</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Suivi complet des recettes du cabinet · {filteredFactures.length} factures affichées
+            <h1 className="text-[26px] font-black text-slate-900 leading-tight">Facturation & Encaissements</h1>
+            <p className="mt-0.5 text-[15px] font-medium text-slate-500">
+              Suivi complet des recettes du cabinet • {filteredFactures.length} factures affichées
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={handleExportCSV}
-              className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg hover:bg-slate-50 font-medium text-sm transition-colors shadow-sm"
+              className="flex items-center justify-center gap-2 rounded-[10px] bg-white border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 shadow-[0_2px_10px_rgba(0,0,0,0.04)] transition-all hover:bg-slate-50 hover:shadow-[0_4px_14px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 active:translate-y-0 active:shadow-none"
             >
-              <Download className="w-4 h-4" />
-              Exporter CSV
-            </button>
-            <button 
-              onClick={() => setNouvelleFactureOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm transition-colors text-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Nouvelle facture
+              <Download className="w-4 h-4" strokeWidth={2.5} />
+              <span>Exporter CSV</span>
             </button>
           </div>
         </div>
 
-        {/* Tab Bar */}
         <div className="flex items-center gap-6 border-b border-slate-200">
           {tabs.map(tab => (
             <button
@@ -120,7 +107,12 @@ export default function FacturationPage() {
             >
               {tab.label}
               {ui.tab === tab.id && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full" />
+                // One shared underline that glides between tabs
+                <motion.span
+                  layoutId="facturation-tab-underline"
+                  transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }}
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full"
+                />
               )}
             </button>
           ))}
@@ -128,18 +120,26 @@ export default function FacturationPage() {
 
         <FilterBar />
 
+        {/* Tab content fades and lifts in (the outgoing tab fades out first). Off with reduced motion. */}
         <div className="mt-6">
-          {renderView()}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={ui.tab}
+              initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={{ duration: reduceMotion ? 0 : 0.2, ease: 'easeOut' }}
+            >
+              {renderView()}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
       </div>
 
-      {/* Drawers / Modals Mounted at Shell Level */}
       <FactureDrawer />
-      <NouvelleFactureDrawer />
       <RecuPaiement />
-      
-      {/* Toast Notification */}
+
       {ui.toast && (
         <div className={cn(
           "fixed bottom-6 right-6 px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-bottom-5 z-50 transition-all",
