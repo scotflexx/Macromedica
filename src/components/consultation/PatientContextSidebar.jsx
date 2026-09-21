@@ -3,6 +3,7 @@ import { Activity, AlertTriangle, Check, ChevronDown, ChevronsLeft, ChevronsRigh
 import { normalizeNote } from '../../lib/encounterService'
 import Button from '../common/Button'
 import IconButton from '../common/IconButton'
+import Avatar from '../common/Avatar'
 
 const fmtDate = (d, withYear = false) => (d
   ? new Date(d).toLocaleDateString('fr-FR', withYear ? { day: 'numeric', month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' })
@@ -132,10 +133,9 @@ export default function PatientContextSidebar({
     return (
       <aside aria-label="Contexte patient (réduit)" className={`flex flex-col items-center gap-3 bg-white py-4 ${className}`}>
         <IconButton label="Afficher le contexte patient" onClick={onToggleCollapsed}><ChevronsRight className="h-4 w-4" /></IconButton>
-        <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-slate-800 to-slate-600 text-[13px] font-bold text-white" title={name}>
-          {initials}
+        <Avatar seed={patient?.id || name} initials={initials} size="sm" title={name}>
           {allergiesKnown && <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 ring-2 ring-white" title={`Allergies : ${allergies}`}><AlertTriangle className="h-2.5 w-2.5 text-white" /></span>}
-        </div>
+        </Avatar>
       </aside>
     )
   }
@@ -208,7 +208,7 @@ export default function PatientContextSidebar({
     <aside aria-label="Contexte patient" className={`flex flex-col bg-white ${className}`}>
       <div className="flex-1 space-y-2.5 overflow-y-auto p-4">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-800 to-slate-600 text-[14px] font-bold text-white">{initials}</div>
+          <Avatar seed={patient?.id || name} initials={initials} size="md" />
           <div className="min-w-0 flex-1 pt-0.5">
             <p className="truncate text-[14.5px] font-bold text-slate-900">{name}</p>
             <p className="text-[12.5px] text-slate-500">{[age != null ? `${age} ans` : 'Âge non renseigné', genre].filter(Boolean).join(' · ')}</p>
