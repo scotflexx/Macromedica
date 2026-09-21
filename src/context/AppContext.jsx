@@ -402,7 +402,22 @@ export function AppProvider({ children }) {
 
   const pushToast = (toast) => {
     const id = buildId('toast')
-    setToasts((current) => [...current, { id, tone: toast.tone || 'success', ...toast }])
+    let desc = toast.description
+    if (typeof desc === 'string') {
+      const lower = desc.toLowerCase()
+      if (lower.includes('cross-clinic access denied') || lower.includes('cross-clinic')) {
+        desc = "Accès refusé : cet élément n'appartient pas à votre cabinet."
+      } else if (lower.includes('appointment not found')) {
+        desc = "Rendez-vous introuvable."
+      } else if (lower.includes('patient has already arrived or left')) {
+        desc = "Ce patient a déjà été ajouté à la salle d'attente ou a déjà terminé."
+      } else if (lower.includes('not authorized') || lower.includes('forbidden')) {
+        desc = "Vous n'avez pas l'autorisation d'effectuer cette action."
+      } else if (lower.includes('not authenticated')) {
+        desc = "Votre session a expiré. Veuillez vous reconnecter."
+      }
+    }
+    setToasts((current) => [...current, { id, tone: toast.tone || 'success', ...toast, description: desc }])
     window.setTimeout(() => {
       setToasts((current) => current.filter((item) => item.id !== id))
     }, 3200)

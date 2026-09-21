@@ -9,9 +9,8 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT p.clinic_id
+  SELECT coalesce(p.clinic_id, p.cabinet_id)
   FROM public.profiles p
   WHERE p.id = auth.uid()
-    AND p.clinic_id IS NOT NULL
   LIMIT 1
 $$;

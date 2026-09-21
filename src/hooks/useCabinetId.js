@@ -6,9 +6,11 @@ import { useAppContext } from '../context/AppContext'
  * hook avoids an extra Supabase call.
  */
 export function useCabinetId() {
-  const { profile } = useAppContext()
+  const { profile, clinicId, cabinetId } = useAppContext()
+  const effectiveId = clinicId || cabinetId || profile?.clinic_id || profile?.cabinet_id || null
   return {
-    cabinetId: profile?.cabinet_id ?? null,
+    cabinetId: effectiveId,
+    clinicId: effectiveId,
     loading: !profile,
   }
 }
