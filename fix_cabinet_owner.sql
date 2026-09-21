@@ -2,6 +2,21 @@
 -- Run in Supabase SQL Editor (safe to re-run).
 -- Works whether clinics uses "name" or "nom".
 
+create or replace function public.current_clinic_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(p.clinic_id, p.cabinet_id)
+  from public.profiles p
+  where p.id = auth.uid()
+  limit 1
+$$;
+
+grant execute on function public.current_clinic_id() to authenticated, anon;
+
 create or replace function public.mm_role_key(raw_role text)
 returns text
 language sql
@@ -160,12 +175,16 @@ where cl.id = c.id
   and cl.owner_id is not null
   and c.tenant_id is distinct from cl.owner_id;
 
--- Mirror clinic_id on doctor profiles
+-- Mirror clinic_id and cabinet_id across all profiles
 update public.profiles p
 set clinic_id = p.cabinet_id
 where p.cabinet_id is not null
-  and public.mm_role_key(p.role) = 'doctor'
-  and p.clinic_id is distinct from p.cabinet_id;
+  and (p.clinic_id is null or p.clinic_id is distinct from p.cabinet_id);
+
+update public.profiles p
+set cabinet_id = p.clinic_id
+where p.clinic_id is not null
+  and (p.cabinet_id is null or p.cabinet_id is distinct from p.clinic_id);
 
 -- Verify: should return 0 rows
 select
