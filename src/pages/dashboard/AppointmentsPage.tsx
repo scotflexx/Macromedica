@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import {
   addDays,
   addMonths,
@@ -273,7 +274,8 @@ function AgendaPrimaryButton({
 const AppointmentsPage: React.FC = () => {
   const { profile, notify, can } = useAppContext()
   const queryClient = useQueryClient()
-  const [view, setView] = useState<'day' | 'week' | 'month'>('day')
+  // Agenda opens on the week view; Jour / Mois are one click away.
+  const [view, setView] = useState<'day' | 'week' | 'month'>('week')
   const [isAnimating, setIsAnimating] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [draftSlot, setDraftSlot] = useState<{ date: string; time: string } | null>(null)
@@ -285,6 +287,34 @@ const AppointmentsPage: React.FC = () => {
     setView(newView)
     setTimeout(() => setIsAnimating(false), 350)
   }
+
+  const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+  const [patientForBooking, setPatientForBooking] = useState<any>(null)
+
+  useEffect(() => {
+    const patientFromState = (location.state as any)?.patient
+    const patientIdFromParams = searchParams.get('patientId')
+
+    if (patientFromState) {
+      setPatientForBooking(patientFromState)
+      setDraftSlot({
+        date: format(new Date(), 'yyyy-MM-dd'),
+        time: '09:00',
+      })
+    } else if (patientIdFromParams) {
+      (async () => {
+        const { data } = await supabase.from('patients').select('*').eq('id', patientIdFromParams).single()
+        if (data) {
+          setPatientForBooking(data)
+          setDraftSlot({
+            date: format(new Date(), 'yyyy-MM-dd'),
+            time: '09:00',
+          })
+        }
+      })()
+    }
+  }, [location.state, searchParams])
 
   const visibleRange = useMemo(() => {
     if (view === 'week') {
@@ -675,15 +705,28 @@ const AppointmentsPage: React.FC = () => {
         )}
 
         <AppointmentFormModal
-          open={Boolean(draftSlot) || Boolean(editingAppointment)}
+          open={Boolean(draftSlot) || Boolean(editingAppointment) || Boolean(patientForBooking)}
           onClose={() => {
             setDraftSlot(null)
             setEditingAppointmentId(null)
+            setPatientForBooking(null)
+            if (searchParams.get('patientId')) {
+              searchParams.delete('patientId')
+              setSearchParams(searchParams, { replace: true })
+            }
           }}
           appointment={editingAppointment}
+          initialPatient={patientForBooking}
           initialDate={draftSlot?.date}
           initialTime={draftSlot?.time}
-          onSuccess={refreshDay}
+          onSuccess={() => {
+            refreshDay()
+            setPatientForBooking(null)
+            if (searchParams.get('patientId')) {
+              searchParams.delete('patientId')
+              setSearchParams(searchParams, { replace: true })
+            }
+          }}
         />
 
         <AppointmentDetailModal

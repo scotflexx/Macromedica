@@ -1,9 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { Search, Loader2, Users, FileCheck, Calendar, ChevronLeft, ChevronRight, SlidersHorizontal, Plus, AlertCircle, MoreVertical, Eye } from 'lucide-react'
+import { Search, Loader2, Users, FileCheck, Calendar, ChevronLeft, ChevronRight, Plus, AlertCircle, Eye, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AppButton } from '../../components/dashboard/DashboardPrimitives'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { cn } from '../../lib/utils'
+import Button from '../../components/common/Button'
 import PatientFormModal from '../../components/forms/PatientFormModal'
+import AppointmentFormModal from '../../components/forms/AppointmentFormModal'
 import { getPatients, getConsultations, getRdv } from '../../lib/api'
 import { useAppContext } from '../../context/AppContext'
 import PatientProfileView from './PatientProfileView'
@@ -31,10 +34,37 @@ function calcAge(dateStr) {
 
 const PAGE_SIZE = 10
 
+function StatCard({ icon: Icon, iconWrap, iconColor, label, value, suffix = '' }) {
+  return (
+    <div className="flex items-center justify-between rounded-[21px] border border-[#e2e8f0] bg-white px-5 py-5 shadow-[0_5px_16px_rgba(15,23,42,0.045)] transition hover:-translate-y-[1px]">
+      <div className="flex items-center gap-3.5">
+        <div className={`flex h-[52px] w-[52px] items-center justify-center rounded-full ${iconWrap}`}>
+          <Icon className={iconColor} size={25} strokeWidth={2.1} />
+        </div>
+        <p className="text-sm font-medium text-slate-600">
+          {label}
+        </p>
+      </div>
+
+      <div className="flex items-end gap-1.5">
+        <p className="text-4xl font-bold text-slate-900 leading-none">
+          {value}
+        </p>
+        {suffix && (
+          <p className="pb-1 text-base font-semibold text-slate-600">
+            {suffix}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function PatientsPage() {
   const navigate = useNavigate()
   const { id } = useParams()
   const { profile, canonicalRole } = useAppContext()
+  const reduceMotion = useReducedMotion()
   // Matches the /patient-workspace/:id route guard (RoleGuard role="docteur")
   // exactly, so this link is never shown to a role that can't open it.
   const canOpenWorkspace = canonicalRole === 'doctor'
@@ -42,6 +72,7 @@ function PatientsPage() {
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [editingPatient, setEditingPatient] = useState(null)
+  const [bookingPatient, setBookingPatient] = useState(null)
   const [activeTab, setActiveTab] = useState('Tous')
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -171,11 +202,12 @@ function PatientsPage() {
       list = list.filter((p) => {
         const prenom = (p.prenom || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         const nom = (p.nom || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        const cin = (p.cin || '').toLowerCase().trim()
         const full = `${prenom} ${nom}`
         const telNorm = (p.telephone || '').replace(/[\s.\-()]/g, '').replace(/^\+212/, '0').replace(/^212/, '0')
         const initials = `${prenom[0] || ''}${nom[0] || ''}`
         const phoneMatch = qPhone.length >= 4 && (telNorm.includes(qPhone) || telNorm.startsWith(qPhone))
-        return full.includes(q) || `${nom} ${prenom}`.includes(q) || phoneMatch || initials.startsWith(q)
+        return full.includes(q) || `${nom} ${prenom}`.includes(q) || cin.includes(q) || phoneMatch || initials.startsWith(q)
       })
     }
 
@@ -215,277 +247,352 @@ function PatientsPage() {
 
 
   return (
-    <div className="pt-6 space-y-6">
+    <div className="pt-6 space-y-6 max-w-[1600px] mx-auto pb-16">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-[26px] font-black text-slate-900 leading-tight">Patients</h1>
-          <p className="mt-0.5 text-[15px] font-medium text-slate-500">
-            Gestion du registre de la clinique • <span className="font-semibold text-blue-600">{totalPatients.toLocaleString('fr-FR')} dossiers</span>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Patients</h1>
+          <p className="mt-1 text-sm text-slate-500 font-normal">
+            Gestion du registre de la clinique · <span className="font-semibold text-blue-600">{totalPatients.toLocaleString('fr-FR')} dossiers</span>
           </p>
         </div>
-        <button 
+        <Button 
+          variant="primary"
           onClick={() => setShowCreate(true)}
-          className="flex items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-[0_2px_10px_rgba(37,99,235,0.2)] transition-all hover:bg-blue-700 hover:shadow-[0_4px_14px_rgba(37,99,235,0.3)] hover:-translate-y-0.5 active:translate-y-0 active:shadow-none"
+          className="shadow-xs hover:shadow-sm"
         >
           <Plus className="w-4 h-4" strokeWidth={2.5} />
           <span>Nouveau patient</span>
-        </button>
+        </Button>
       </div>
 
-      {/* ── 3 Stat Cards ── */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-[24px] bg-white p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center gap-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)]">
-          <div className="p-3 rounded-2xl bg-blue-50">
-            <Users className="w-6 h-6 text-blue-600" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Total Patients</p>
-            <p className="text-[28px] font-bold text-slate-800 leading-tight">{totalPatients.toLocaleString('fr-FR')}</p>
-          </div>
-        </div>
-
-        <div className="rounded-[24px] bg-white p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center gap-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)]">
-          <div className="p-3 rounded-2xl bg-amber-50">
-            <Calendar className="w-6 h-6 text-amber-600" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nouveaux ce mois</p>
-            <p className="text-[28px] font-bold text-slate-800 leading-tight">{newThisMonth}</p>
-          </div>
-        </div>
-
-        <div className="rounded-[24px] bg-white p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex items-center gap-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)]">
-          <div className="p-3 rounded-2xl bg-emerald-50">
-            <FileCheck className="w-6 h-6 text-emerald-600" />
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Dossiers complétés</p>
-            <p className="text-[28px] font-bold text-slate-800 leading-tight">{completionPct}%</p>
-          </div>
-        </div>
+      {/* ── 3 Stat Cards (exact Tableau de bord design) ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <StatCard
+          icon={Users}
+          iconWrap="bg-[#dbeafe]"
+          iconColor="text-[#3b82f6]"
+          label="Total Patients"
+          value={totalPatients.toLocaleString('fr-FR')}
+        />
+        <StatCard
+          icon={Calendar}
+          iconWrap="bg-[#fff2e3]"
+          iconColor="text-[#ff851f]"
+          label="Nouveaux ce mois"
+          value={newThisMonth}
+        />
+        <StatCard
+          icon={FileCheck}
+          iconWrap="bg-[#ecfdf3]"
+          iconColor="text-[#22c55e]"
+          label="Dossiers complétés"
+          value={completionPct}
+          suffix="%"
+        />
       </div>
 
-      {/* ── Search Bar ── */}
-      <div className="rounded-[20px] bg-white p-2 shadow-[0_4px_20px_rgb(0,0,0,0.03)] flex items-center gap-2">
-        <label className="flex-1 flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
-          <Search className="h-5 w-5 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setCurrentPage(1) }}
-            type="text"
-            placeholder="Rechercher par nom, CIN ou téléphone..."
-            className="w-full border-0 bg-transparent text-[15px] text-slate-700 outline-none placeholder:text-slate-400"
-          />
-        </label>
-        <button className="p-3 rounded-2xl bg-slate-50 text-slate-500 hover:bg-slate-100 transition-colors">
-          <SlidersHorizontal className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* ── Filter Tabs ── */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {TABS.map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => { setActiveTab(tab.key); setCurrentPage(1) }}
-            className={`px-4 py-2 rounded-full text-[13px] font-semibold transition-all duration-200 flex items-center gap-2 ${
-              activeTab === tab.key
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'bg-white text-slate-500 hover:bg-slate-50 ring-1 ring-slate-100'
-            }`}
-          >
-            {tab.label}
-            {tab.count != null && tab.count > 0 && (
-              <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold ${
-                activeTab === tab.key
-                  ? 'bg-white/20 text-white'
-                  : 'bg-rose-100 text-rose-700'
-              }`}>
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Patient Table ── */}
-      <div className="rounded-[24px] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
-        {/* Table Header */}
-        <div className="grid grid-cols-[auto_1fr_110px_140px_140px_100px_80px] gap-4 px-6 py-4 border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-widest items-center">
-          <div className="w-10" />
-          <span>Patient</span>
-          <span>Âge / Sexe</span>
-          <span>Dernière visite</span>
-          <span>Prochain RDV</span>
-          <span>Statut</span>
-          <span>Actions</span>
-        </div>
-
-        {/* Rows */}
-        {(isLoadingPatients || isLoadingConsultations || isLoadingRdvs) ? (
-          <div className="px-6 py-12 flex justify-center text-slate-400">
-             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-          </div>
-        ) : paginatedPatients.length === 0 ? (
-          <div className="px-6 py-12 text-center text-slate-400 text-[15px]">Aucun patient trouvé.</div>
-        ) : paginatedPatients.map((p) => {
-          const age = calcAge(p.date_naissance)
-          const sex = p.sexe === 'homme' ? 'H' : p.sexe === 'femme' ? 'F' : '-'
-          const initials = ((p.prenom?.[0] || '') + (p.nom?.[0] || '')).toUpperCase()
-          const info = patientDataMap[p.id] || {}
-
-          // Determine status
-          let statusLabel = 'Actif'
-          let statusClasses = 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100/50'
-          if (info.isArchived) {
-            statusLabel = 'Archivé'
-            statusClasses = 'bg-slate-100 text-slate-500 ring-1 ring-slate-200/50'
-          } else if (info.hasUnpaidCredit) {
-            statusLabel = 'Impayé'
-            statusClasses = 'bg-rose-50 text-rose-700 ring-1 ring-rose-100/50'
-          }
-
-          // Next RDV display
-          const nextRdvDisplay = info.nextRdvDate
-            ? formatDateShort(info.nextRdvDate)
-            : 'Non planifié'
-          const nextRdvSub = info.nextRdvTime || ''
-
+      {/* ── Horizontal Navigation Tabs (matching Facturation & Paramètres) ── */}
+      <div className="flex items-center gap-6 border-b border-slate-200 overflow-x-auto scrollbar-none">
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.key
           return (
             <button
-              key={p.id}
+              key={tab.key}
               type="button"
-              onClick={() => navigate(`/patients/${p.id}`)}
-              className="w-full grid grid-cols-[auto_1fr_110px_140px_140px_100px_80px] gap-4 px-6 py-4 border-b border-slate-50 items-center text-left hover:bg-slate-50/50 transition-colors group"
+              onClick={() => { setActiveTab(tab.key); setCurrentPage(1) }}
+              className={cn(
+                "pb-3 text-xs sm:text-sm font-medium transition-colors relative flex items-center gap-2 whitespace-nowrap cursor-pointer group",
+                isActive ? "text-blue-600 font-semibold" : "text-slate-500 hover:text-slate-800"
+              )}
             >
-              {/* Avatar */}
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-[13px] font-bold text-slate-600 group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
-                {initials || 'P'}
-              </div>
-
-              {/* Name + ID */}
-              <div className="min-w-0">
-                <p className="text-[14px] font-semibold text-slate-900 truncate">{p.nom} {p.prenom}</p>
-                <p className="text-[12px] text-slate-400 mt-0.5 truncate">
-                  ID: {p.id?.split('-')[0] || '-'}
-                </p>
-              </div>
-
-              {/* Age / Sex */}
-              <span className="text-[14px] text-slate-600">{age ? `${age} ans` : '-'} / {sex}</span>
-
-              {/* Last Visit */}
-              <div>
-                <span className="text-[14px] text-slate-600">{formatDateShort(info.lastVisitDate || p.updated_at)}</span>
-              </div>
-
-              {/* Next Appointment */}
-              <div className="min-w-0">
-                <span className={`text-[14px] ${info.nextRdvDate ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>
-                  {nextRdvDisplay}
-                </span>
-                {nextRdvSub && (
-                  <span className="text-[12px] text-blue-600 ml-1">{nextRdvSub}</span>
-                )}
-              </div>
-
-              {/* Status */}
-              <div>
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${statusClasses}`}>
-                  {info.hasUnpaidCredit && !info.isArchived && <AlertCircle className="w-3 h-3 mr-1" />}
-                  {statusLabel}
-                </span>
-              </div>
-
-              {/* Actions */}
-      <div className="flex items-center gap-1.5">
-                <div
-                  className="p-2 rounded-xl bg-slate-50 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                  title="Prendre RDV"
-                  onClick={(e) => { e.stopPropagation(); navigate('/agenda') }}
+              <span>{tab.label}</span>
+              {tab.count != null && tab.count > 0 && (
+                <span
+                  className={cn(
+                    "inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-semibold transition-colors",
+                    isActive
+                      ? "bg-blue-100/80 text-blue-700 font-bold"
+                      : tab.highlight
+                      ? "bg-amber-100 text-amber-700 font-bold"
+                      : "bg-slate-100 text-slate-600 font-medium"
+                  )}
                 >
-                  <Calendar className="w-4 h-4" />
-                </div>
-                {canOpenWorkspace && (
-                  <div
-                    className="p-2 rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                    title="Voir dossier"
-                    onClick={(e) => { e.stopPropagation(); navigate(`/patient-workspace/${p.id}`) }}
-                  >
-                    <Eye className="w-4 h-4" />
-                  </div>
-                )}
-              </div>
+                  {tab.count}
+                </span>
+              )}
+              {isActive && (
+                <motion.span
+                  layoutId="patients-tab-underline"
+                  transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 40 }}
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-t-full"
+                />
+              )}
             </button>
           )
         })}
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100">
-          <p className="text-[13px] text-slate-400">
-            Affichage de {filteredPatients.length > 0 ? ((safePage - 1) * PAGE_SIZE) + 1 : 0} - {Math.min(safePage * PAGE_SIZE, filteredPatients.length)} sur {filteredPatients.length} patients
-          </p>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={safePage === 1}
-              className="p-2 rounded-xl text-slate-400 hover:bg-slate-50 disabled:opacity-30 transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-              // Show pages around current page
-              let page
-              if (totalPages <= 5) {
-                page = i + 1
-              } else if (safePage <= 3) {
-                page = i + 1
-              } else if (safePage >= totalPages - 2) {
-                page = totalPages - 4 + i
-              } else {
-                page = safePage - 2 + i
-              }
-              return (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`w-8 h-8 rounded-xl text-[13px] font-semibold transition-all ${
-                    safePage === page
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-                >
-                  {page}
-                </button>
-              )
-            })}
-            {totalPages > 5 && safePage < totalPages - 2 && (
-              <>
-                <span className="text-slate-400 px-1">...</span>
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  className={`w-8 h-8 rounded-xl text-[13px] font-semibold transition-all ${
-                    safePage === totalPages ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-                >
-                  {totalPages}
-                </button>
-              </>
-            )}
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={safePage === totalPages}
-              className="p-2 rounded-xl text-slate-400 hover:bg-slate-50 disabled:opacity-30 transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
       </div>
+
+      {/* ── Search Bar ── */}
+      <div className="relative">
+        <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <input
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setCurrentPage(1) }}
+          type="text"
+          placeholder="Rechercher par nom, prénom, CIN ou téléphone..."
+          className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-9 text-xs sm:text-sm font-normal text-slate-800 h-10 outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-500/10 transition-all placeholder:text-slate-400 shadow-2xs"
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => { setSearch(''); setCurrentPage(1) }}
+            className="w-6 h-6 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center absolute right-3 top-1/2 -translate-y-1/2 transition-colors cursor-pointer"
+            title="Effacer la recherche"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {/* ── Animated Tab Content & Patient Table ── */}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={activeTab}
+          initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+          transition={{ duration: reduceMotion ? 0 : 0.2, ease: 'easeOut' }}
+        >
+          <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+            {/* Table Header */}
+            <div className="grid grid-cols-[auto_1fr_110px_130px_150px_100px_80px] gap-4 px-5 sm:px-6 py-2.5 bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-semibold text-slate-500 uppercase tracking-wider items-center select-none">
+              <div className="w-9" />
+              <span>Patient</span>
+              <span>Âge / Sexe</span>
+              <span>Dernière visite</span>
+              <span>Prochain RDV</span>
+              <span>Statut</span>
+              <span className="text-right">Actions</span>
+            </div>
+
+            {/* Rows */}
+            {(isLoadingPatients || isLoadingConsultations || isLoadingRdvs) ? (
+              <div className="px-6 py-16 flex flex-col items-center justify-center text-slate-400 gap-2">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                <span className="text-xs font-semibold text-slate-500">Chargement des patients...</span>
+              </div>
+            ) : paginatedPatients.length === 0 ? (
+              <div className="px-6 py-16 text-center">
+                <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" strokeWidth={1.5} />
+                <p className="text-sm font-semibold text-slate-700">Aucun patient trouvé</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {search ? 'Aucun résultat ne correspond à votre recherche.' : 'Aucun dossier dans cette catégorie.'}
+                </p>
+              </div>
+            ) : (
+              paginatedPatients.map((p) => {
+                const age = calcAge(p.date_naissance)
+                const sex = p.sexe === 'homme' ? 'H' : p.sexe === 'femme' ? 'F' : '-'
+                const initials = ((p.prenom?.[0] || '') + (p.nom?.[0] || '')).toUpperCase()
+                const info = patientDataMap[p.id] || {}
+
+                // Determine status
+                let statusLabel = 'Actif'
+                let statusClasses = 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                if (info.isArchived) {
+                  statusLabel = 'Archivé'
+                  statusClasses = 'bg-slate-100 text-slate-600 border-slate-200/80'
+                } else if (info.hasUnpaidCredit) {
+                  statusLabel = 'Impayé'
+                  statusClasses = 'bg-amber-50 text-amber-700 border-amber-200/80'
+                }
+
+                // Next RDV display
+                const nextRdvDisplay = info.nextRdvDate
+                  ? formatDateShort(info.nextRdvDate)
+                  : 'Non planifié'
+                const nextRdvSub = info.nextRdvTime || ''
+
+                return (
+                  <div
+                    key={p.id}
+                    role="row"
+                    onClick={() => navigate(`/patients/${p.id}`)}
+                    className="w-full grid grid-cols-[auto_1fr_110px_130px_150px_100px_80px] gap-4 px-5 sm:px-6 py-3 border-b border-slate-100 last:border-b-0 items-center text-left hover:bg-blue-50/20 transition-colors group cursor-pointer"
+                  >
+                    {/* Avatar */}
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xs font-semibold text-slate-600 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-2xs">
+                      {initials || 'P'}
+                    </div>
+
+                    {/* Name + CIN / Phone */}
+                    <div className="min-w-0 pr-2">
+                      <p className="text-xs sm:text-sm font-semibold text-slate-900 group-hover:text-blue-600 transition-colors truncate leading-snug">
+                        {p.nom} {p.prenom}
+                      </p>
+                      <p className="text-[11px] text-slate-500 font-normal mt-0.5 truncate flex items-center gap-1.5">
+                        {p.cin ? (
+                          <span>CIN: <span className="font-mono text-slate-600 font-medium">{p.cin}</span></span>
+                        ) : (
+                          <span>ID: <span className="font-mono text-slate-600 font-medium">{p.id?.split('-')[0] || '-'}</span></span>
+                        )}
+                        {p.telephone && (
+                          <>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-slate-500 font-medium">{p.telephone}</span>
+                          </>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Age / Sex */}
+                    <span className="text-xs sm:text-[13px] text-slate-600 font-medium truncate">
+                      {age ? `${age} ans` : '-'} · <span className="text-slate-500">{sex}</span>
+                    </span>
+
+                    {/* Last Visit */}
+                    <span className="text-xs sm:text-[13px] text-slate-600 font-normal truncate">
+                      {formatDateShort(info.lastVisitDate || p.updated_at)}
+                    </span>
+
+                    {/* Next Appointment */}
+                    <div className="min-w-0">
+                      {info.nextRdvDate ? (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs sm:text-[13px] text-slate-800 font-medium">
+                            {formatDateShort(info.nextRdvDate)}
+                          </span>
+                          {nextRdvSub && (
+                            <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100/60 leading-none">
+                              {nextRdvSub}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-normal">Non planifié</span>
+                      )}
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${statusClasses}`}>
+                        {info.hasUnpaidCredit && !info.isArchived && <AlertCircle className="w-3 h-3 mr-1 shrink-0" />}
+                        {statusLabel}
+                      </span>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                        title={`Prendre RDV pour ${p.prenom || ''} ${p.nom || ''}`.trim() || 'Prendre RDV'}
+                        onClick={() => setBookingPatient(p)}
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                      </button>
+                      {canOpenWorkspace && (
+                        <button
+                          type="button"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                          title="Voir dossier médical"
+                          onClick={() => navigate(`/patient-workspace/${p.id}`)}
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+
+            {/* Pagination */}
+            <div className="flex items-center justify-between px-5 sm:px-6 py-2.5 border-t border-slate-100 bg-slate-50/50">
+              <p className="text-xs text-slate-500 font-normal">
+                Affichage de <span className="font-semibold text-slate-700">{filteredPatients.length > 0 ? ((safePage - 1) * PAGE_SIZE) + 1 : 0}</span> à <span className="font-semibold text-slate-700">{Math.min(safePage * PAGE_SIZE, filteredPatients.length)}</span> sur <span className="font-semibold text-slate-700">{filteredPatients.length}</span> patients
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200/70 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                  aria-label="Page précédente"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  let page
+                  if (totalPages <= 5) {
+                    page = i + 1
+                  } else if (safePage <= 3) {
+                    page = i + 1
+                  } else if (safePage >= totalPages - 2) {
+                    page = totalPages - 4 + i
+                  } else {
+                    page = safePage - 2 + i
+                  }
+                  return (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      className={cn(
+                        "w-7 h-7 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                        safePage === page
+                          ? "bg-blue-600 text-white shadow-xs font-bold"
+                          : "text-slate-600 hover:bg-slate-200/60"
+                      )}
+                    >
+                      {page}
+                    </button>
+                  )
+                })}
+                {totalPages > 5 && safePage < totalPages - 2 && (
+                  <>
+                    <span className="text-slate-400 px-1 text-xs">...</span>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage(totalPages)}
+                      className={cn(
+                        "w-7 h-7 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                        safePage === totalPages
+                          ? "bg-blue-600 text-white shadow-xs font-bold"
+                          : "text-slate-600 hover:bg-slate-200/60"
+                      )}
+                    >
+                      {totalPages}
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200/70 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+                  aria-label="Page suivante"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </AnimatePresence>
 
       <PatientFormModal open={showCreate} onClose={() => setShowCreate(false)} onSuccess={handleFormSuccess} />
       <PatientFormModal open={Boolean(editingPatient)} onClose={() => setEditingPatient(null)} patient={editingPatient} onSuccess={handleFormSuccess} />
+      <AppointmentFormModal
+        open={Boolean(bookingPatient)}
+        onClose={() => setBookingPatient(null)}
+        initialPatient={bookingPatient}
+        onSuccess={() => {
+          setBookingPatient(null)
+          refetch()
+        }}
+      />
     </div>
   )
 }

@@ -23,7 +23,13 @@ import {
   Plus,
   UserPlus,
   Search,
-  Phone
+  Phone,
+  Printer,
+  Receipt,
+  Banknote,
+  CreditCard,
+  Landmark,
+  ShieldCheck
 } from 'lucide-react'
 import { useAppContext } from '../context/AppContext'
 import { RDV_STATUSES, VISIT_STATUSES, VISIT_STATUS_LABELS, VISIT_STATUS_COLORS } from '../lib/workflow'
@@ -78,6 +84,20 @@ const fmtBilledDay = (visit) => new Date(billedAt(visit)).toLocaleDateString('fr
 const visitTotalDue = (visit) => {
   const actes = visit?.sessionActes?.reduce((sum, a) => sum + a.montant, 0) || 0
   return actes > 0 ? actes : (visit?.billing_amount || visit?.consultations?.billing_amount || 300)
+}
+
+const getPaymentMethodMeta = (method) => {
+  switch (method) {
+    case 'card':
+      return { label: 'Carte bancaire', Icon: CreditCard, badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/80', iconClass: 'bg-blue-100 text-blue-700' }
+    case 'transfer':
+      return { label: 'Virement', Icon: Landmark, badgeClass: 'bg-purple-50 text-purple-700 border-purple-200/80', iconClass: 'bg-purple-100 text-purple-700' }
+    case 'insurance':
+      return { label: 'Tiers payant', Icon: ShieldCheck, badgeClass: 'bg-teal-50 text-teal-700 border-teal-200/80', iconClass: 'bg-teal-100 text-teal-700' }
+    case 'cash':
+    default:
+      return { label: 'Espèces', Icon: Banknote, badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/80', iconClass: 'bg-emerald-100 text-emerald-700' }
+  }
 }
 
 function formatTime(date) {
@@ -937,6 +957,7 @@ export default function DashboardPage() {
   const [showDatePickerMap, setShowDatePickerMap] = useState({})
   const [newRdvs, setNewRdvs] = useState(new Set())
   const [showWalkIn, setShowWalkIn] = useState(false)
+  const [walkInAnimFinished, setWalkInAnimFinished] = useState(false)
   const [walkInPatientId, setWalkInPatientId] = useState('')
   const [walkInDoctorId, setWalkInDoctorId] = useState('')
   const [walkInSearchQuery, setWalkInSearchQuery] = useState('')
@@ -950,6 +971,27 @@ export default function DashboardPage() {
   const [lastUndoableAction, setLastUndoableAction] = useState(null)
   const [localQueueVisits, setLocalQueueVisits] = useState([])
   const fileDattenteRef = useRef(null)
+
+  const toggleWalkIn = () => {
+    if (showWalkIn) {
+      setWalkInAnimFinished(false)
+      setShowWalkIn(false)
+    } else {
+      setWalkInAnimFinished(false)
+      setShowWalkIn(true)
+    }
+  }
+
+  const closeWalkIn = () => {
+    setWalkInAnimFinished(false)
+    setShowWalkIn(false)
+    setWalkInPatientId('')
+    setWalkInDoctorId('')
+    setWalkInSearchQuery('')
+    setShowWalkInPatientDropdown(false)
+    setWalkInCreatingPatient(false)
+    setWalkInNewPatientPhone('')
+  }
 
   // Sync localQueueVisits with AppContext visits to prevent stale data.
   //
@@ -1559,10 +1601,8 @@ export default function DashboardPage() {
     try {
       await createWalkInVisit(walkInPatientId, walkInDoctorId)
       await refreshVisits?.()
-      setShowWalkIn(false)
-      setWalkInPatientId('')
-      setWalkInDoctorId('')
-      notify({ title: 'Patient ajoute', description: 'Le patient a ete ajoute a la file d attente.' })
+      closeWalkIn()
+      notify({ title: 'Patient ajouté', description: 'Le patient a été ajouté à la file d\'attente.' })
     } catch (error) {
       notify({ title: 'Erreur', description: error.message || 'Impossible d ajouter ce patient.', tone: 'error' })
     } finally {
@@ -1738,9 +1778,20 @@ export default function DashboardPage() {
                 ) : (
                   <>
                     {!isDoctor && can('waiting_room.add_patient') && (
-                      <Button variant="accentOutline" onClick={() => setShowWalkIn((v) => !v)}>
-                        <Plus className="h-4 w-4" />
-                        Arrivée sans RDV
+                      <Button
+                        variant={showWalkIn ? "accent" : "accentOutline"}
+                        onClick={toggleWalkIn}
+                        className="relative overflow-hidden transition-all duration-300"
+                        title={showWalkIn ? "Fermer l'arrivée sans RDV" : "Ajouter une arrivée sans RDV"}
+                      >
+                        <motion.div
+                          animate={{ rotate: showWalkIn ? 45 : 0 }}
+                          transition={{ type: 'spring', damping: 16, stiffness: 280 }}
+                          className="flex items-center justify-center"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </motion.div>
+                        <span>Arrivée sans RDV</span>
                       </Button>
                     )}
                     <Button variant="secondary" onClick={() => setShowingHistory(true)}>
@@ -1762,33 +1813,81 @@ export default function DashboardPage() {
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.18, ease: 'easeOut' }}
                   >
-                    {!isDoctor && can('waiting_room.add_patient') && showWalkIn && (
-                      <div className="mb-6 rounded-2xl border border-blue-200/80 bg-white p-5 shadow-sm space-y-4">
-                        {/* Header */}
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-                              <UserPlus className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-bold text-slate-900">Arrivée sans rendez-vous</h3>
-                              <p className="text-xs font-medium text-slate-500">Ajouter directement un patient dans la file d'attente</p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => { setShowWalkIn(false); setWalkInPatientId(''); setWalkInDoctorId(''); setWalkInSearchQuery(''); }}
-                            className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
-                            aria-label="Fermer"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
+                    <AnimatePresence>
+                      {!isDoctor && can('waiting_room.add_patient') && showWalkIn && (
+                        <motion.div
+                          key="walk-in-panel"
+                          initial={{ opacity: 0, height: 0, scale: 0.98, y: -16, filter: 'blur(4px)' }}
+                          animate={{ 
+                            opacity: 1, 
+                            height: 'auto', 
+                            scale: 1, 
+                            y: 0, 
+                            filter: 'blur(0px)',
+                            transition: {
+                              height: { duration: 0.36, ease: [0.16, 1, 0.3, 1] },
+                              opacity: { duration: 0.26, ease: 'easeOut' },
+                              scale: { duration: 0.36, ease: [0.16, 1, 0.3, 1] },
+                              y: { duration: 0.36, ease: [0.16, 1, 0.3, 1] },
+                              filter: { duration: 0.22 }
+                            }
+                          }}
+                          exit={{ 
+                            opacity: 0, 
+                            height: 0, 
+                            scale: 0.98, 
+                            y: -12, 
+                            filter: 'blur(4px)',
+                            transition: {
+                              height: { duration: 0.26, ease: [0.4, 0, 0.2, 1] },
+                              opacity: { duration: 0.18 },
+                              scale: { duration: 0.22 },
+                              y: { duration: 0.22 },
+                              filter: { duration: 0.18 }
+                            }
+                          }}
+                          onAnimationComplete={() => {
+                            if (showWalkIn) setWalkInAnimFinished(true)
+                          }}
+                          style={{ overflow: walkInAnimFinished ? 'visible' : 'hidden' }}
+                          className="mb-6 relative z-30"
+                        >
+                          <div className="rounded-2xl border border-blue-200/90 bg-gradient-to-b from-blue-50/40 via-white to-white p-5 shadow-[0_12px_32px_-8px_rgba(37,99,235,0.12),0_2px_8px_rgba(15,23,42,0.04)] space-y-4 relative z-30">
+                            {/* Header */}
+                            <motion.div 
+                              initial={{ opacity: 0, y: -6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.24, delay: 0.05 }}
+                              className="flex items-center justify-between pb-3 border-b border-slate-100"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shadow-sm ring-4 ring-blue-50/80">
+                                  <UserPlus className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <h3 className="text-sm font-bold text-slate-900">Arrivée sans rendez-vous</h3>
+                                  <p className="text-xs font-medium text-slate-500">Ajouter directement un patient dans la file d'attente</p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={closeWalkIn}
+                                className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+                                aria-label="Fermer"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </motion.div>
 
-                        {/* Fields Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                            {/* Fields Grid */}
+                            <motion.div 
+                              initial={{ opacity: 0, y: 6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.28, delay: 0.09 }}
+                              className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start relative z-40"
+                            >
                           {/* Left: Patient Search / Selection */}
-                          <div>
+                          <div className="relative z-50">
                             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                               Patient
                             </label>
@@ -1812,26 +1911,31 @@ export default function DashboardPage() {
                                 </button>
                               </div>
                             ) : (
-                              <div ref={walkInSearchContainerRef} className="relative">
+                              <div ref={walkInSearchContainerRef} className="relative z-50">
                                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 <input
                                   type="text"
                                   value={walkInSearchQuery}
                                   onChange={(e) => {
-                                    setWalkInSearchQuery(e.target.value)
-                                    setShowWalkInPatientDropdown(true)
+                                    const val = e.target.value
+                                    setWalkInSearchQuery(val)
+                                    setShowWalkInPatientDropdown(val.trim().length > 0)
                                   }}
-                                  onFocus={() => setShowWalkInPatientDropdown(true)}
+                                  onFocus={() => {
+                                    if (walkInSearchQuery.trim().length > 0) {
+                                      setShowWalkInPatientDropdown(true)
+                                    }
+                                  }}
                                   placeholder="Rechercher par nom ou téléphone..."
                                   className="w-full rounded-xl border border-slate-200 pl-10 pr-3.5 text-sm font-medium h-[44px] bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
                                 />
                                 <AnimatePresence>
-                                  {showWalkInPatientDropdown && (
+                                  {showWalkInPatientDropdown && walkInSearchQuery.trim().length > 0 && (
                                     <motion.div
                                       initial={{ opacity: 0, y: -6 }}
                                       animate={{ opacity: 1, y: 0 }}
                                       exit={{ opacity: 0, y: -6 }}
-                                      className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl border border-slate-200 shadow-xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-50 scrollbar-thin"
+                                      className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl border border-slate-200 shadow-2xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-50 scrollbar-thin"
                                     >
                                       {filteredWalkInPatients.length === 0 ? (
                                         walkInSearchQuery.trim() ? (
@@ -1946,7 +2050,7 @@ export default function DashboardPage() {
                           </div>
 
                           {/* Right: Doctor Selection */}
-                          <div>
+                          <div className="relative z-30">
                             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                               Médecin traitant
                             </label>
@@ -1964,10 +2068,15 @@ export default function DashboardPage() {
                               }))}
                             />
                           </div>
-                        </div>
+                        </motion.div>
 
                         {/* Actions */}
-                        <div className="flex items-center gap-3 pt-2">
+                        <motion.div 
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.28, delay: 0.13 }}
+                          className="flex items-center gap-3 pt-2 relative z-10"
+                        >
                           <Button
                             variant="primary"
                             disabled={Boolean(busyMap['walk-in']) || !walkInPatientId || !walkInDoctorId}
@@ -1978,27 +2087,24 @@ export default function DashboardPage() {
                           </Button>
                           <Button
                             variant="secondary"
-                            onClick={() => {
-                              setShowWalkIn(false);
-                              setWalkInPatientId('');
-                              setWalkInDoctorId('');
-                              setWalkInSearchQuery('');
-                            }}
+                            onClick={closeWalkIn}
                           >
                             Annuler
                           </Button>
-                        </div>
+                        </motion.div>
                       </div>
-                    )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                     {filteredQueue.length === 0 ? (
-                      <motion.div className="flex min-h-[440px] flex-col items-center justify-center text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                      <motion.div className="flex min-h-[440px] flex-col items-center justify-center text-center relative z-0" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                         <Users className="h-[66px] w-[66px] text-slate-200" strokeWidth={1.6} />
                         <p className="mt-5 text-lg font-semibold text-slate-900">Aucun patient en attente</p>
                         <p className="mt-2 text-sm font-medium text-slate-600 max-w-[360px]">Les patients arrivés ou en attente apparaîtront ici automatiquement.</p>
                       </motion.div>
                     ) : (
-                      <div className="space-y-1">
+                      <div className="space-y-1 relative z-0">
                         <AnimatePresence mode="popLayout">
                           {filteredQueue.map((rdv, index) => (
                             <PatientCard 
@@ -2164,12 +2270,17 @@ export default function DashboardPage() {
       <Modal
         open={paymentHistoryModalOpen}
         title="Historique des paiements"
-        description={`Patient: ${currentHistoryVisit ? getPatientName(currentHistoryVisit) : ''}`}
+        description={
+          currentHistoryVisit ? (
+            <span>Patient : <strong className="font-semibold text-slate-800">{getPatientName(currentHistoryVisit)}</strong></span>
+          ) : undefined
+        }
         onClose={() => setPaymentHistoryModalOpen(false)}
+        width="max-w-lg"
         footer={
-          <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
+          <div className="flex items-center justify-between gap-3 w-full">
+            <Button
+              variant="primary"
               onClick={() => {
                 if (currentHistoryVisit) {
                   const total = currentHistoryVisit?.consultations?.billing_amount || currentHistoryVisit?.billing_amount || 300
@@ -2192,43 +2303,54 @@ export default function DashboardPage() {
                   })
                 }
               }}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-md shadow-blue-500/20 transition-all hover:-translate-y-0.5 active:scale-95"
             >
+              <Printer className="w-4 h-4" />
               Imprimer le reçu officiel
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="secondary"
               onClick={() => setPaymentHistoryModalOpen(false)}
-              className="px-5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
             >
               Fermer
-            </button>
+            </Button>
           </div>
         }
       >
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-1">
           {currentHistoryVisit ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {/* Financial Summary Box */}
-              <div className="grid grid-cols-3 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200/80">
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-slate-500">Honoraires Dûs</p>
-                  <p className="text-sm font-bold text-slate-900">{fmtMAD(currentHistoryVisit?.consultations?.billing_amount || currentHistoryVisit?.billing_amount || 300)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-emerald-600">Montant Versé</p>
-                  <p className="text-sm font-bold text-emerald-700">{fmtMAD(currentHistoryVisit?.total_paid || currentHistoryVisit?.billing_amount || 300)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-amber-600">Reste à Payer</p>
-                  <p className="text-sm font-bold text-amber-700">{fmtMAD(currentHistoryVisit?.remaining_balance || 0)}</p>
-                </div>
-              </div>
+              {(() => {
+                const totalDue = currentHistoryVisit?.consultations?.billing_amount || currentHistoryVisit?.billing_amount || 300
+                const paidAmount = currentHistoryVisit?.total_paid || currentHistoryVisit?.billing_amount || 300
+                const remaining = currentHistoryVisit?.remaining_balance || 0
+                const isSettled = remaining <= 0
+
+                return (
+                  <div className="grid grid-cols-3 gap-3 p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200/90">
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-wider font-bold text-slate-500">Honoraires dus</p>
+                      <p className="text-base font-bold text-slate-900">{fmtMAD(totalDue)}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-wider font-bold text-emerald-700">Montant versé</p>
+                      <p className="text-base font-bold text-emerald-700">{fmtMAD(paidAmount)}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className={`text-[11px] uppercase tracking-wider font-bold ${!isSettled ? 'text-amber-700' : 'text-slate-500'}`}>
+                        Reste à payer
+                      </p>
+                      <p className={`text-base font-bold ${!isSettled ? 'text-amber-700' : 'text-slate-600'}`}>
+                        {fmtMAD(remaining)}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Transactions List */}
-              <div className="space-y-2">
-                <p className="text-xs font-bold text-slate-900">Détails des versements enregistrés</p>
-                {(allPayments[currentHistoryVisit.id]?.length > 0
+              {(() => {
+                const payments = (allPayments[currentHistoryVisit.id]?.length > 0
                   ? allPayments[currentHistoryVisit.id]
                   : [
                       {
@@ -2238,43 +2360,86 @@ export default function DashboardPage() {
                         timestamp: currentHistoryVisit?.updated_at || new Date().toISOString()
                       }
                     ]
-                ).map((payment, idx) => (
-                  <div key={payment.id || idx} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-                    <div>
-                      <p className="text-xs font-bold text-slate-900">{fmtMAD(payment.amount)}</p>
-                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                        {payment.method === 'cash' ? '💵 Espèces' : payment.method === 'card' ? '💳 TPE' : '🏦 Virement'} • {new Date(payment.timestamp).toLocaleString('fr-FR')}
+                )
+
+                return (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Détails des versements enregistrés
                       </p>
+                      <span className="text-[11px] font-semibold text-slate-400">
+                        {payments.length} {payments.length > 1 ? 'versements' : 'versement'}
+                      </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        openPrintWindow({
-                          recuNo: `REC-${(currentHistoryVisit.id || '').slice(-6).toUpperCase() || '2026-01'}`,
-                          patientName: getPatientName(currentHistoryVisit),
-                          patientCin: currentHistoryVisit?.patients?.cin || 'N/A',
-                          patientPhone: currentHistoryVisit?.patients?.telephone || 'N/A',
-                          patientAssurance: currentHistoryVisit?.patients?.assurance || 'N/A',
-                          date: new Date(payment.timestamp).toLocaleDateString('fr-FR'),
-                          montantTotal: currentHistoryVisit?.consultations?.billing_amount || currentHistoryVisit?.billing_amount || 300,
-                          montantPaye: payment.amount,
-                          resteAPayer: currentHistoryVisit?.remaining_balance || 0,
-                          paymentMethod: payment.method || 'cash',
-                          notes: currentHistoryVisit?.reason || currentHistoryVisit?.motif || 'Consultation Médicale',
-                          title: 'REÇU DE PAIEMENT MÉDICAL',
-                          isPaid: true
-                        })
-                      }}
-                      className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200/60"
-                    >
-                      Voir reçu
-                    </button>
+
+                    <div className="space-y-2">
+                      {payments.map((payment, idx) => {
+                        const meta = getPaymentMethodMeta(payment.method)
+                        const MethodIcon = meta.Icon
+                        const dateFormatted = new Date(payment.timestamp).toLocaleDateString('fr-FR')
+                        const timeFormatted = new Date(payment.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+
+                        return (
+                          <div
+                            key={payment.id || idx}
+                            className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-blue-200 transition-all"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconClass}`}>
+                                <MethodIcon className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-bold text-slate-900">{fmtMAD(payment.amount)}</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${meta.badgeClass}`}>
+                                    {meta.label}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-1.5">
+                                  <Clock3 className="w-3.5 h-3.5 text-slate-400 inline" />
+                                  <span>{dateFormatted} à {timeFormatted}</span>
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="accentOutline"
+                              size="sm"
+                              onClick={() => {
+                                openPrintWindow({
+                                  recuNo: `REC-${(currentHistoryVisit.id || '').slice(-6).toUpperCase() || '2026-01'}`,
+                                  patientName: getPatientName(currentHistoryVisit),
+                                  patientCin: currentHistoryVisit?.patients?.cin || 'N/A',
+                                  patientPhone: currentHistoryVisit?.patients?.telephone || 'N/A',
+                                  patientAssurance: currentHistoryVisit?.patients?.assurance || 'N/A',
+                                  date: dateFormatted,
+                                  montantTotal: currentHistoryVisit?.consultations?.billing_amount || currentHistoryVisit?.billing_amount || 300,
+                                  montantPaye: payment.amount,
+                                  resteAPayer: currentHistoryVisit?.remaining_balance || 0,
+                                  paymentMethod: payment.method || 'cash',
+                                  notes: currentHistoryVisit?.reason || currentHistoryVisit?.motif || 'Consultation Médicale',
+                                  title: 'REÇU DE PAIEMENT MÉDICAL',
+                                  isPaid: true
+                                })
+                              }}
+                            >
+                              <Receipt className="w-3.5 h-3.5" />
+                              Voir reçu
+                            </Button>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                ))}
-              </div>
+                )
+              })()}
             </div>
           ) : (
-            <p className="text-center text-slate-500 py-6 text-xs font-medium">Aucun détail de paiement trouvé</p>
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Receipt className="w-10 h-10 text-slate-300 mb-2" strokeWidth={1.5} />
+              <p className="text-sm font-semibold text-slate-700">Aucun détail de paiement trouvé</p>
+              <p className="text-xs text-slate-400 mt-0.5">Aucun versement n'a encore été enregistré pour cette consultation.</p>
+            </div>
           )}
         </div>
       </Modal>

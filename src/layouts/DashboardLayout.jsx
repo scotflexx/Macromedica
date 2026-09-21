@@ -268,9 +268,9 @@ function DashboardLayout() {
             </main>
           </SidebarInset>
 
-          <PatientFormModal open={globalModal?.type === 'patient'} onClose={closeGlobalModal} />
-          <AppointmentFormModal open={globalModal?.type === 'appointment'} onClose={closeGlobalModal} />
-          <InvoiceFormModal open={globalModal?.type === 'invoice'} onClose={closeGlobalModal} />
+          <PatientFormModal open={globalModal?.type === 'patient'} onClose={closeGlobalModal} {...(globalModal?.payload || {})} />
+          <AppointmentFormModal open={globalModal?.type === 'appointment'} onClose={closeGlobalModal} {...(globalModal?.payload || {})} />
+          <InvoiceFormModal open={globalModal?.type === 'invoice'} onClose={closeGlobalModal} {...(globalModal?.payload || {})} />
 
           <ConfirmDialog
             open={Boolean(confirmDialog)}

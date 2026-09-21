@@ -55,6 +55,7 @@ import ConsultationSheet from '../../components/consultation/ConsultationSheet'
 import AddItemModal from '../../components/consultation/AddItemModal'
 import Button from '../../components/common/Button'
 import Badge from '../../components/common/Badge'
+import Avatar from '../../components/common/Avatar'
 import { Card } from '../../components/facturation/ui'
 import { isConsultationLive } from '../../lib/consultationProgress'
 import { useActeSuggestions } from '../../lib/acteSuggestions'
@@ -1162,18 +1163,6 @@ export default function PatientWorkspace() {
                   </motion.div>
                 )}
 
-                {/* Bouton + Acte (Même style que "Voir dossier") */}
-                <Button variant="secondary" size="sm" className="h-10" onClick={() => setShowModal('addActe')}>
-                  <Plus className="w-4 h-4" />
-                  Acte
-                </Button>
-
-                {/* Bouton Dossier (Patient Infos) */}
-                <Button variant="secondary" size="sm" className="h-10" onClick={() => setShowPatientSidebar(true)}>
-                  <User className="w-4 h-4" />
-                  Dossier patient
-                </Button>
-
                 {/* Terminer : ouvre la revue de fin de consultation (récapitulatif + confirmation) */}
                 <Button variant="primary" size="sm" className="h-10" onClick={handleEndConsultation}>
                   <Save className="w-4 h-4" />
@@ -1201,13 +1190,12 @@ export default function PatientWorkspace() {
       >
         <div className="w-full flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm hover:shadow-md transition-shadow duration-300">
           <div className="relative flex-shrink-0">
-            <div
-              className={`relative w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-600 flex items-center justify-center text-white text-[18px] font-extrabold tracking-tight shadow-md ${
-                isConsultationActive ? 'ring-2 ring-emerald-400 ring-offset-2' : ''
-              }`}
-            >
-              {initials}
-            </div>
+            <Avatar
+              seed={patient.id || patientIdParam}
+              initials={initials}
+              size="lg"
+              className={isConsultationActive ? 'ring-2 ring-emerald-400 ring-offset-2' : ''}
+            />
             {isConsultationActive && (
               <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70 animate-ping" />

@@ -116,6 +116,7 @@ function AppointmentFormModal({
   open,
   onClose,
   appointment,
+  initialPatient,
   onSuccess,
   initialDate,
   initialTime
@@ -220,6 +221,19 @@ function AppointmentFormModal({
           type: meta.type || 'Consultation',
           notes: ''
         })
+      } else if (initialPatient) {
+        const patientName = `${initialPatient.prenom || ''} ${initialPatient.nom || ''}`.trim()
+        setSearchQuery(patientName)
+        setSelectedPatient(initialPatient)
+        setExistingForm({
+          patientId: initialPatient.id,
+          telephone: initialPatient.telephone || '',
+          motif: '',
+          date: initialDateValue,
+          heure: initialTime || '08:00',
+          type: 'Consultation',
+          notes: ''
+        })
       } else {
         setExistingForm({
           patientId: '',
@@ -258,7 +272,7 @@ function AppointmentFormModal({
         })
       }
     }
-  }, [open, appointment, initialDate, initialTime])
+  }, [open, appointment, initialPatient, initialDate, initialTime])
 
   // Filter patients based on search query
   const filteredPatients = useMemo(() => {
