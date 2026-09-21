@@ -17,6 +17,129 @@ $$;
 
 grant execute on function public.current_clinic_id() to authenticated, anon;
 
+create or replace function public.mm_assert_same_clinic(p_clinic_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_my_clinic uuid;
+begin
+  v_my_clinic := public.current_clinic_id();
+  
+  if p_clinic_id is not null and v_my_clinic is not null and p_clinic_id is distinct from v_my_clinic then
+    perform public.write_audit_log(
+      'CROSS_CLINIC_ACCESS_BLOCKED',
+      'security',
+      null,
+      null,
+      null,
+      jsonb_build_object('target_clinic_id', p_clinic_id, 'user_clinic_id', v_my_clinic)
+    );
+    raise exception 'cross-clinic access denied';
+  end if;
+end;
+$$;
+
+grant execute on function public.mm_assert_same_clinic(uuid) to authenticated;
+
+create or replace function public.create_walk_in_visit(p_patient_id uuid, p_doctor_id uuid)
+returns visits
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  patient_clinic uuid;
+  doctor_clinic uuid;
+  effective_clinic uuid;
+  qn integer;
+  visit_row public.visits%rowtype;
+begin
+  if not (public.is_admin() or public.mm_has_permission('waiting_room.add_patient')) then
+    raise exception 'not authorized';
+  end if;
+
+  select coalesce(p.clinic_id, p.cabinet_id) into patient_clinic from public.patients p where p.id = p_patient_id;
+  
+  select coalesce(pr.clinic_id, pr.cabinet_id) into doctor_clinic
+  from public.profiles pr
+  where pr.id = p_doctor_id;
+
+  effective_clinic := coalesce(patient_clinic, doctor_clinic, public.current_clinic_id());
+
+  if effective_clinic is null then
+    raise exception 'cabinet introuvable';
+  end if;
+
+  if patient_clinic is not null and doctor_clinic is not null and patient_clinic is distinct from doctor_clinic then
+    raise exception 'doctor must belong to the same clinic';
+  end if;
+
+  perform public.mm_assert_same_clinic(effective_clinic);
+
+  qn := public.mm_next_queue_number(effective_clinic, p_doctor_id, current_date);
+
+  insert into public.visits (
+    clinic_id, patient_id, source, doctor_id, status,
+    queue_date, queue_number, queue_sort_at, queued_at, arrived_at, waiting_at,
+    created_by, updated_by
+  )
+  values (
+    effective_clinic, p_patient_id, 'walk_in', p_doctor_id, 'waiting',
+    current_date, qn, now(), now(), now(), now(), auth.uid(), auth.uid()
+  )
+  returning * into visit_row;
+
+  perform public.write_audit_log('VISIT_CREATED_WALK_IN', 'visit', visit_row.id, null, to_jsonb(visit_row), null);
+  perform public.write_audit_log('PATIENT_WAITING', 'visit', visit_row.id, null, to_jsonb(visit_row), null);
+
+  return visit_row;
+end;
+$$;
+
+grant execute on function public.create_walk_in_visit(uuid, uuid) to authenticated;
+
+create or replace function public.add_to_waiting_room(p_rdv_id uuid)
+returns rdv
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  rdv_before public.rdv%rowtype;
+  rdv_after public.rdv%rowtype;
+  effective_clinic uuid;
+begin
+  select * into rdv_before from public.rdv where id = p_rdv_id for update;
+  if not found then raise exception 'appointment not found'; end if;
+
+  perform public.mm_assert_permission('waiting_room.add_patient');
+  
+  effective_clinic := coalesce(rdv_before.cabinet_id, public.current_clinic_id());
+  if effective_clinic is not null then
+    perform public.mm_assert_same_clinic(effective_clinic);
+  end if;
+
+  if rdv_before.arrival_status != 'NOT_ARRIVED' then
+    raise exception 'patient has already arrived or left';
+  end if;
+
+  update public.rdv
+  set arrival_status = 'WAITING',
+      arrived_at = now()
+  where id = p_rdv_id
+  returning * into rdv_after;
+
+  perform public.write_audit_log('PATIENT_WAITING', 'rdv', p_rdv_id, to_jsonb(rdv_before), to_jsonb(rdv_after), null);
+
+  return rdv_after;
+end;
+$$;
+
+grant execute on function public.add_to_waiting_room(uuid) to authenticated;
+
 create or replace function public.mm_role_key(raw_role text)
 returns text
 language sql
