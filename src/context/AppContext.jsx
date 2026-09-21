@@ -2,14 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, useCal
 import { supabase } from '../lib/supabase'
 import { RDV_STATUSES } from '../lib/workflow'
 import { normalizeRole, toLegacyRole } from '../lib/rbac'
-import { getDoctors, getTodayVisits, subscribeClinicPayments, subscribeClinicVisits } from '../lib/visitService'
-import {
-  MOCK_PATIENTS,
-  MOCK_RDV,
-  MOCK_VISITS,
-  MOCK_DOCTORS,
-  MOCK_CONSULTATIONS,
-} from '../lib/mockData'
+import { getDoctors, getTodayVisits, getOutstandingBalanceVisits, subscribeClinicPayments, subscribeClinicVisits } from '../lib/visitService'
 
 const AppContext = createContext(null)
 const PREFS_KEY = 'macromedica-notification-prefs'
@@ -23,24 +16,40 @@ export function AppProvider({ children }) {
   const [profile, setProfile] = useState(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isInitializing, setIsInitializing] = useState(true)
+  // Server-authoritative permission set (role default + per-user overrides,
+  // resolved by mm_get_my_permissions()). This is a UX cache only — every
+  // sensitive RPC re-checks mm_has_permission()/mm_assert_permission()
+  // server-side regardless of what this set says, so a stale/tampered
+  // client value can only ever hide or show a button, never grant real
+  // access. Doctors/admins get every key back from the RPC itself, so
+  // `can()` works uniformly for all roles without special-casing here.
+  const [permissions, setPermissions] = useState(() => new Set())
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false)
 
-  const [patients, setPatients] = useState(MOCK_PATIENTS)
-  const [rdvList, setRdvList] = useState(MOCK_RDV)
-  const [visits, setVisits] = useState(() => {
-    try {
-      const cached = localStorage.getItem('macromedica_visits_cache')
-      if (cached) {
-        const parsed = JSON.parse(cached)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed
-      }
-    } catch (e) {
-      console.warn('Visits cache load error:', e)
+  const [patients, setPatients] = useState([])
+  const [rdvList, setRdvList] = useState([])
+  const [visits, setVisits] = useState([])
+  // Earlier-day visits still owing money (shown in Historique, not in the live queue)
+  const [outstandingVisits, setOutstandingVisits] = useState([])
+  const [doctors, setDoctors] = useState([])
+  const [consultations, setConsultations] = useState([])
+  const [dataErrors, setDataErrors] = useState({})
+  // Canonical tenant identity is clinic_id. cabinet_id is retained only as a
+  // backwards-compatible alias for profiles awaiting the Phase 4 backfill.
+  const clinicId = profile?.clinic_id || profile?.cabinet_id || null
+  const cabinetId = clinicId
+
+  useEffect(() => {
+    if (import.meta.env.DEV && profile) {
+      console.debug('[tenant]', {
+        userId: user?.id,
+        profileId: profile.id,
+        clinicId: profile.clinic_id || null,
+        legacyCabinetId: profile.cabinet_id || null,
+        canonicalClinicId: clinicId,
+      })
     }
-    return MOCK_VISITS
-  })
-  const [doctors, setDoctors] = useState(MOCK_DOCTORS)
-  const [consultations, setConsultations] = useState(MOCK_CONSULTATIONS)
-  const cabinetId = profile?.cabinet_id ?? profile?.clinic_id
+  }, [user?.id, profile, clinicId])
 
   useEffect(() => {
     try {
@@ -104,23 +113,38 @@ export function AppProvider({ children }) {
     }
   }, [])
 
+  const refreshProfile = useCallback(async () => {
+    if (user?.id) {
+      const fresh = await fetchProfile(user.id)
+      if (fresh) setProfile(fresh)
+      return fresh
+    }
+    return null
+  }, [user?.id, fetchProfile])
+
   const loadPatients = useCallback(async (cId) => {
     try {
-      const { data, error } = await supabase.from('patients').select('*').eq('cabinet_id', cId).order('created_at', { ascending: false })
+      setDataErrors((current) => ({ ...current, patients: null }))
+      // antecedents/allergies/groupe_sanguin are revoked at the column-
+      // privilege level for the shared authenticated role (see migration
+      // 20260912070000) — a bare select('*') would error for everyone here,
+      // not just secretaries. Doctor/admin get them via mm_get_patient_clinical.
+      const { data, error } = await supabase.from('patients').select('id, cabinet_id, nom, prenom, telephone, date_naissance, cin, adresse, mutuelle, numero_cnss, email, ville, sexe, created_at').eq('cabinet_id', cId).order('created_at', { ascending: false })
       if (error) {
-        console.warn('Patients load fallback:', extractErrorMessage(error))
-        setPatients(MOCK_PATIENTS)
+        console.error('Patients load error:', error)
+        setDataErrors((current) => ({ ...current, patients: error }))
         return
       }
-      if (data && data.length > 0) setPatients(data)
+      if (data) setPatients(data)
     } catch (err) {
-      console.warn('Patients load fallback:', extractErrorMessage(err))
-      setPatients(MOCK_PATIENTS)
+      console.error('Patients load error:', err)
+      setDataErrors((current) => ({ ...current, patients: err }))
     }
   }, [])
 
   const loadRdv = useCallback(async (cId) => {
     try {
+      setDataErrors((current) => ({ ...current, appointments: null }))
       const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Africa/Casablanca' })
       const { data, error } = await supabase
         .from('rdv')
@@ -128,58 +152,99 @@ export function AppProvider({ children }) {
         .eq('cabinet_id', cId)
         .gte('date_rdv', `${today}T00:00:00`)
         .lte('date_rdv', `${today}T23:59:59`)
+        .order('start_time', { ascending: true, nullsFirst: false })
         .order('date_rdv', { ascending: true })
       if (error) {
-        console.warn('Rdv load fallback:', extractErrorMessage(error))
+        console.error('Rdv load error:', error)
+        setDataErrors((current) => ({ ...current, appointments: error }))
         return
       }
-      if (data && data.length > 0) setRdvList(data)
+      if (data) setRdvList(data)
     } catch (err) {
-      console.warn('Rdv load fallback:', extractErrorMessage(err))
+      console.error('Rdv load error:', err)
+      setDataErrors((current) => ({ ...current, appointments: err }))
     }
   }, [])
 
   const loadConsultations = useCallback(async (cId) => {
     try {
+      setDataErrors((current) => ({ ...current, consultations: null }))
       const { data, error } = await supabase.from('consultations').select(`*, patients(nom, prenom)`).eq('cabinet_id', cId).order('date_consult', { ascending: false })
       if (error) {
-        console.warn('Consultations load fallback:', extractErrorMessage(error))
+        console.error('Consultations load error:', error)
+        setDataErrors((current) => ({ ...current, consultations: error }))
         return
       }
-      if (data && data.length > 0) setConsultations(data)
+      if (data) setConsultations(data)
     } catch (err) {
-      console.warn('Consultations load fallback:', extractErrorMessage(err))
+      console.error('Consultations load error:', err)
+      setDataErrors((current) => ({ ...current, consultations: err }))
     }
   }, [])
 
   const loadVisits = useCallback(async (cId) => {
     try {
+      setDataErrors((current) => ({ ...current, visits: null }))
       const data = await getTodayVisits(cId)
-      if (data && data.length > 0) setVisits(data)
+      if (data) setVisits(data)
     } catch (err) {
-      console.warn('Visits load fallback:', extractErrorMessage(err))
+      console.error('Visits load error:', err?.message || err?.code || err)
+      setDataErrors((current) => ({ ...current, visits: err }))
+    }
+    try {
+      setOutstandingVisits(await getOutstandingBalanceVisits(cId))
+    } catch (err) {
+      console.error('Outstanding balances load error:', err?.message || err?.code || err)
     }
   }, [])
 
   const loadDoctors = useCallback(async (cId) => {
     try {
       const data = await getDoctors(cId)
-      setDoctors(data && data.length > 0 ? data : MOCK_DOCTORS)
+      if (data) setDoctors(data)
     } catch (err) {
-      console.warn('Doctors load fallback:', extractErrorMessage(err))
-      setDoctors(MOCK_DOCTORS)
+      console.error('Doctors load error:', err)
+    }
+  }, [])
+
+  // Fetches the effective permission set for the current session
+  // (mm_get_my_permissions(): role default + any per-user override,
+  // resolved entirely server-side). Safe to call unconditionally — it
+  // returns an empty set for an unauthenticated caller.
+  const fetchPermissions = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.rpc('mm_get_my_permissions')
+      if (error) throw error
+      setPermissions(new Set((data || []).map((row) => row.permission_key)))
+    } catch (err) {
+      console.error('Permissions fetch error:', err)
+      // Fail closed: on any error, the permission set stays whatever it
+      // was (empty on first load) — an unrecognized/undefined permission
+      // is always treated as denied by can(), never as allowed.
+    } finally {
+      setPermissionsLoaded(true)
+    }
+  }, [])
     }
   }, [])
 
   // Handle a valid session — set user + profile + authenticated
   const handleSession = useCallback(async (session) => {
     if (!session?.user) {
-      // No session — keep mock data visible so the UI looks full
+      // No session — clear all business data
       currentUserIdRef.current = null
       setUser(null)
       setProfile(null)
       setIsAuthenticated(false)
-      // Keep mock data visible (already set as initial state)
+      setPermissions(new Set())
+      setPermissionsLoaded(false)
+      setPatients([])
+      setRdvList([])
+      setVisits([])
+
+      setOutstandingVisits([])
+      setDoctors([])
+      setConsultations([])
       return
     }
 
@@ -187,21 +252,23 @@ export function AppProvider({ children }) {
     if (currentUserIdRef.current === session.user.id) return
 
     const prof = await fetchProfile(session.user.id)
-    
+
     // Always authenticate if we have a valid session
     currentUserIdRef.current = session.user.id
     setUser(session.user)
     setIsAuthenticated(true)
+    fetchPermissions()
 
     if (prof) {
       setProfile(prof)
-      if (prof.cabinet_id) {
+      if (prof.clinic_id || prof.cabinet_id) {
+        const tenantId = prof.clinic_id || prof.cabinet_id
          Promise.all([
-           loadPatients(prof.cabinet_id),
-           loadRdv(prof.cabinet_id),
-           loadConsultations(prof.cabinet_id),
-           loadVisits(prof.cabinet_id),
-           loadDoctors(prof.cabinet_id)
+           loadPatients(tenantId),
+           loadRdv(tenantId),
+           loadConsultations(tenantId),
+           loadVisits(tenantId),
+           loadDoctors(tenantId)
          ]).catch(console.error)
       }
     } else {
@@ -215,13 +282,16 @@ export function AppProvider({ children }) {
         clinic_id: meta.clinic_id || null,
       })
     }
-  }, [fetchProfile, loadPatients, loadRdv, loadConsultations, loadVisits, loadDoctors])
+  }, [fetchProfile, fetchPermissions, loadPatients, loadRdv, loadConsultations, loadVisits, loadDoctors])
 
   useEffect(() => {
     // SINGLE source of truth: getSession() on mount, then listen for changes.
     // We do NOT set isAuthenticated until the profile is successfully fetched.
     // This prevents the "stale session → redirect to dashboard → fail → back to login" loop.
-    
+
+    // Purge any stale visits cache from previous sessions — Supabase is the source of truth
+    localStorage.removeItem('macromedica_visits_cache')
+
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       await handleSession(session)
     }).catch(err => {
@@ -246,6 +316,14 @@ export function AppProvider({ children }) {
           setUser(null)
           setProfile(null)
           setIsAuthenticated(false)
+          setPatients([])
+          setRdvList([])
+          setVisits([])
+
+          setOutstandingVisits([])
+          setDoctors([])
+          setConsultations([])
+          localStorage.removeItem('macromedica_visits_cache')
         } else if (event === 'TOKEN_REFRESHED' && session?.user) {
           // Only update user object, don't re-fetch profile
           setUser(session.user)
@@ -273,16 +351,39 @@ export function AppProvider({ children }) {
     }
   }, [devRoleOverride])
 
+  const rdvRealtimeTimeoutRef = useRef(null)
+
   useEffect(() => {
     if (!cabinetId) return
 
-    // Centralized realtime sync for the dashboard / waiting room
+    // Centralized realtime sync for the dashboard / waiting room.
+    //
+    // Debounced: an action like "Ajouter à la salle" already applies its own
+    // optimistic local update (DashboardPage's localRdvList) AND updates the
+    // database, which in turn fires THIS SAME realtime event almost
+    // immediately. Calling loadRdv() synchronously on every event replaces
+    // the entire rdvList array (a fresh SELECT, all-new object references)
+    // while the card's exit animation is still mid-flight — that full-list
+    // swap fights with AnimatePresence's own reconciliation and was making
+    // unrelated cards flicker/disappear instead of just the one being
+    // removed. Debouncing coalesces bursts of events (including the one the
+    // user's own click just caused) into a single refetch after the UI has
+    // had a moment to settle, without weakening the resync itself — it
+    // still remains the source of truth for other tabs/users' changes.
+    const scheduleRdvReload = () => {
+      if (rdvRealtimeTimeoutRef.current) clearTimeout(rdvRealtimeTimeoutRef.current)
+      rdvRealtimeTimeoutRef.current = setTimeout(() => {
+        rdvRealtimeTimeoutRef.current = null
+        loadRdv(cabinetId)
+      }, 600)
+    }
+
     const rdvChannel = supabase
       .channel('app-global-sync')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rdv', filter: `cabinet_id=eq.${cabinetId}` },
-        () => loadRdv(cabinetId)
+        scheduleRdvReload
       )
       .subscribe()
 
@@ -294,6 +395,7 @@ export function AppProvider({ children }) {
     })
 
     return () => {
+      if (rdvRealtimeTimeoutRef.current) clearTimeout(rdvRealtimeTimeoutRef.current)
       supabase.removeChannel(rdvChannel)
       supabase.removeChannel(visitChannel)
       supabase.removeChannel(paymentChannel)
@@ -332,13 +434,14 @@ export function AppProvider({ children }) {
 
       if (prof) {
         setProfile(prof)
-        if (prof.cabinet_id) {
+        if (prof.clinic_id || prof.cabinet_id) {
+          const tenantId = prof.clinic_id || prof.cabinet_id
            Promise.all([
-             loadPatients(prof.cabinet_id),
-             loadRdv(prof.cabinet_id),
-             loadConsultations(prof.cabinet_id),
-             loadVisits(prof.cabinet_id),
-             loadDoctors(prof.cabinet_id)
+             loadPatients(tenantId),
+             loadRdv(tenantId),
+             loadConsultations(tenantId),
+             loadVisits(tenantId),
+             loadDoctors(tenantId)
            ]).catch(console.error)
         }
       } else {
@@ -368,12 +471,21 @@ export function AppProvider({ children }) {
     setUser(null)
     setProfile(null)
     setIsAuthenticated(false)
+    setPatients([])
+    setRdvList([])
+    setVisits([])
+
+    setOutstandingVisits([])
+    setDoctors([])
+    setConsultations([])
     localStorage.removeItem(PREFS_KEY)
+    localStorage.removeItem('macromedica_visits_cache')
     window.location.href = '/'
   }
 
-  // DEV SWITCHER — use dev override first, then real profile role
-  const baseRole = devRoleOverride || profile?.role || 'doctor'
+  // DEV SWITCHER — use dev override first, then real profile role. Never active outside dev builds,
+  // so a stale localStorage override can't silently grant a fake role in production.
+  const baseRole = (import.meta.env.DEV && devRoleOverride) || profile?.role || 'doctor'
   const canonicalRole = normalizeRole(baseRole)
   const role = toLegacyRole(canonicalRole)
 
@@ -391,7 +503,8 @@ export function AppProvider({ children }) {
             ...visit,
             status: newStatus,
             billing_type: extra.method || visit.billing_type || 'cash',
-            billing_amount: extra.amount !== undefined ? Number(extra.amount) : (visit.billing_amount || 300),
+            // No invented default: an unknown amount stays unknown (the server figure is authoritative).
+            billing_amount: extra.amount !== undefined ? Number(extra.amount) : visit.billing_amount,
             updated_at: new Date().toISOString(),
             ...extra
           }
@@ -399,24 +512,17 @@ export function AppProvider({ children }) {
         return visit
       })
 
-      if (!found && visitId) {
-        const newEntry = {
-          id: visitId,
-          patient_id: extra.patient_id || 'pat_01',
-          status: newStatus,
-          billing_amount: extra.amount !== undefined ? Number(extra.amount) : 300,
-          billing_type: extra.method || 'cash',
-          motif: extra.motif || 'Consultation médicale',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          patients: extra.patient_name ? { prenom: extra.patient_name.split(' ')[0], nom: extra.patient_name.split(' ').slice(1).join(' ') } : { prenom: 'Karima', nom: 'Benali' },
-          ...extra
-        }
-        return [newEntry, ...updated]
-      }
-
       return updated
     })
+  }, [])
+
+  // Remove a visit from AppContext visits array (used by undo of ADD_TO_QUEUE)
+  const removeVisit = useCallback((visitId) => {
+    const rawId = String(visitId || '').replace(/^pay_/, '').replace(/^consult_/, '')
+    setVisits(current => current.filter(visit => {
+      const vId = String(visit.id || '')
+      return vId !== visitId && vId !== rawId
+    }))
   }, [])
 
   // Update patient debt (solde_impaye)
@@ -430,6 +536,11 @@ export function AppProvider({ children }) {
     }))
   }, [])
 
+  // Fail-closed permission check: an unrecognized/undefined permission key,
+  // or a permission set that hasn't loaded yet, is always denied — never
+  // implicitly allowed. This is a UX convenience only; see fetchPermissions.
+  const can = useCallback((permissionKey) => permissions.has(permissionKey), [permissions])
+
   const value = useMemo(() => ({
     user,
     profile,
@@ -437,17 +548,24 @@ export function AppProvider({ children }) {
     canonicalRole,
     devRoleOverride,
     setDevRoleOverride,
-    cabinet: profile?.clinics,
-    cabinetId: profile?.cabinet_id,
+    permissions,
+    permissionsLoaded,
+    can,
+    refreshPermissions: fetchPermissions,
+    refreshProfile,
+    cabinet: profile?.cabinets || profile?.clinics || null,
+    clinicId,
+    cabinetId: clinicId,
     currentUser: profile
-      ? { name: profile.nom_complet, role: profile.role }
-      : { name: 'Utilisateur', role: 'Staff' },
+      ? { id: profile.id, name: profile.nom_complet, role: profile.role }
+      : (user ? { id: user.id, name: 'Utilisateur', role: 'Staff' } : null),
     isAuthenticated,
     isInitializing,
     toasts,
     globalModal,
     confirmDialog,
     notificationPrefs,
+    dataErrors,
 
     login,
     logout,
@@ -466,6 +584,7 @@ export function AppProvider({ children }) {
     appointments: rdvList,
     consultations,
     visits,
+    outstandingVisits,
     doctors,
     waitingList,
     invoices: [],
@@ -473,23 +592,24 @@ export function AppProvider({ children }) {
     getPatientName: () => 'Patient...',
 
     updateVisitStatus,
+    removeVisit,
     updatePatientDebt,
 
-    refreshPatients: () => profile?.cabinet_id && loadPatients(profile.cabinet_id),
-    refreshRdv: () => profile?.cabinet_id && loadRdv(profile.cabinet_id),
-    refreshConsultations: () => profile?.cabinet_id && loadConsultations(profile.cabinet_id),
-    refreshVisits: () => profile?.cabinet_id && loadVisits(profile.cabinet_id),
-    refreshDoctors: () => profile?.cabinet_id && loadDoctors(profile.cabinet_id),
+    refreshPatients: () => clinicId && loadPatients(clinicId),
+    refreshRdv: () => clinicId && loadRdv(clinicId),
+    refreshConsultations: () => clinicId && loadConsultations(clinicId),
+    refreshVisits: () => clinicId && loadVisits(clinicId),
+    refreshDoctors: () => clinicId && loadDoctors(clinicId),
     refreshAll: () => {
-      if (profile?.cabinet_id) {
-        loadPatients(profile.cabinet_id)
-        loadRdv(profile.cabinet_id)
-        loadConsultations(profile.cabinet_id)
-        loadVisits(profile.cabinet_id)
-        loadDoctors(profile.cabinet_id)
+      if (clinicId) {
+        loadPatients(clinicId)
+        loadRdv(clinicId)
+        loadConsultations(clinicId)
+        loadVisits(clinicId)
+        loadDoctors(clinicId)
       }
     },
-  }), [user, profile, role, canonicalRole, isAuthenticated, isInitializing, toasts, globalModal, confirmDialog, notificationPrefs, patients, rdvList, consultations, visits, doctors, waitingList, updateVisitStatus, updatePatientDebt])
+  }), [user, profile, role, canonicalRole, permissions, permissionsLoaded, can, fetchPermissions, refreshProfile, clinicId, isAuthenticated, isInitializing, toasts, globalModal, confirmDialog, notificationPrefs, dataErrors, patients, rdvList, consultations, visits, outstandingVisits, doctors, waitingList, updateVisitStatus, removeVisit, updatePatientDebt])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

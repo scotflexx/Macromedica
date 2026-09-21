@@ -17,10 +17,19 @@ import {
   Pill,
   MessageSquare,
   Stethoscope,
-  Plus
+  CalendarClock,
+  ArrowLeft,
+  Archive,
+  Plus,
+  UserPlus,
+  Search,
+  Phone
 } from 'lucide-react'
 import { useAppContext } from '../context/AppContext'
 import { RDV_STATUSES, VISIT_STATUSES, VISIT_STATUS_LABELS, VISIT_STATUS_COLORS } from '../lib/workflow'
+import Button from '../components/common/Button'
+import Badge from '../components/common/Badge'
+import Select from '../components/common/Select'
 import {
   addAppointmentToWaitingRoom,
   callPatient,
@@ -28,19 +37,47 @@ import {
   createWalkInVisit,
   subscribeClinicVisits,
   processVisitPayment,
+  getVisitBillingBalance,
 } from '../lib/visitService'
 
 // Import existing modal
 import Modal from '../components/common/Modal'
+import PaymentModal from '../components/common/PaymentModal'
 import AddTaskModal from '../components/forms/AddTaskModal'
 import { loadTasks, saveTasks, taskToLegacy } from '../lib/taskHelpers'
+import { fetchTasks, createTask } from '../lib/taskService'
+import { createPatient } from '../lib/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { openPrintWindow } from '../components/common/ReceiptPrint'
-import { can } from '../lib/rbac'
 import { cancelAppointment, rescheduleAppointment } from '../lib/appointmentService'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { isToday, isPast, parseISO } from 'date-fns'
 
 const TZ = 'Africa/Casablanca'
 const fmtMAD = (n) => (Number(n) || 0).toLocaleString('fr-FR') + ' MAD'
+// Amount due for a visit. The payment row written when the consultation was finished
+// (surfaced as billing_amount) is authoritative; the 300 default only applies to a
+// visit that has no billing figure at all.
+// A visit still in billing that was billed on an earlier day is a carried-over balance, not
+// same-day activity. The billed date comes from the visit's own billing_at (set when the
+// consultation was sent to the cashier), falling back to its queue date.
+const QUEUE_TZ = 'Africa/Casablanca'
+const dayKey = (date) => new Date(date).toLocaleDateString('fr-CA', { timeZone: QUEUE_TZ })
+const billedAt = (visit) => visit?.queue_date || visit?.billing_at || null
+const isCarriedOver = (visit) => (
+  visit?.status === VISIT_STATUSES.BILLING && Boolean(billedAt(visit)) && dayKey(billedAt(visit)) < dayKey(new Date())
+)
+// Partly paid (some collected, a balance left): it leaves the live queue for Historique, where it is
+// shown with its "Reste à payer" chip and can still be collected.
+const isPartiallyPaid = (visit) => (
+  visit?.status === VISIT_STATUSES.BILLING && Number(visit.total_paid) > 0 && Number(visit.remaining_balance) > 0
+)
+const fmtBilledDay = (visit) => new Date(billedAt(visit)).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', timeZone: QUEUE_TZ })
+
+const visitTotalDue = (visit) => {
+  const actes = visit?.sessionActes?.reduce((sum, a) => sum + a.montant, 0) || 0
+  return actes > 0 ? actes : (visit?.billing_amount || visit?.consultations?.billing_amount || 300)
+}
 
 function formatTime(date) {
   if (!date) return '--:--'
@@ -99,6 +136,7 @@ function FilterChips() {
 }
 
 function PreviewRdvBar({ rdv, doctors, selectedDoctorId, onSelectDoctor, isBusy, onAddToQueue, onCancel, onShowDatePicker, showDatePicker, onConfirmDate, onBack, isHovered, onHover }) {
+  const { can } = useAppContext()
   const initials = getInitials(rdv)
   const [newDate, setNewDate] = useState(rdv.date_rdv)
   const [addIconHovered, setAddIconHovered] = useState(false)
@@ -149,6 +187,7 @@ function PreviewRdvBar({ rdv, doctors, selectedDoctorId, onSelectDoctor, isBusy,
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.25 }}
           >
+            {can('waiting_room.add_patient') && (
             <button
               onClick={onAddToQueue}
               disabled={isBusy}
@@ -200,7 +239,7 @@ function PreviewRdvBar({ rdv, doctors, selectedDoctorId, onSelectDoctor, isBusy,
               }}
             >
               <span>Ajouter à la salle</span>
-              <ArrowRight 
+              <ArrowRight
                 size={18}
                 style={{
                   transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -208,6 +247,8 @@ function PreviewRdvBar({ rdv, doctors, selectedDoctorId, onSelectDoctor, isBusy,
                 }}
               />
             </button>
+            )}
+            {can('appointments.cancel') && (
             <button
               onClick={onCancel}
               disabled={isBusy}
@@ -259,7 +300,7 @@ function PreviewRdvBar({ rdv, doctors, selectedDoctorId, onSelectDoctor, isBusy,
               }}
             >
               <span>Annuler RDV</span>
-              <X 
+              <X
                 size={18}
                 style={{
                   transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -267,6 +308,7 @@ function PreviewRdvBar({ rdv, doctors, selectedDoctorId, onSelectDoctor, isBusy,
                 }}
               />
             </button>
+            )}
           </motion.div>
         ) : (
           <motion.div 
@@ -352,15 +394,22 @@ function CancelledRdvBar({ rdv }) {
 function PreviewCard({ rdvList, cancelledRdvs, isBusy, onAddToQueue, onCancel, onShowDatePicker, showDatePickerMap, onConfirmDate, onBack }) {
   const scheduledAppointments = useMemo(
     () => rdvList
-      .filter((rdv) => rdv.status === RDV_STATUSES.SCHEDULED)
+      // arrival_status must also be checked — an rdv keeps status='confirme'
+      // after being added to the waiting room (only arrival_status changes),
+      // so without this a patient already in the queue (added from this
+      // page, from /salle-attente, or in another tab) kept showing an
+      // "Ajouter à la salle" button that would always fail server-side with
+      // "patient has already arrived or left" — a correct guard, but a
+      // confusing, always-broken-looking button.
+      .filter((rdv) => rdv.status === RDV_STATUSES.SCHEDULED && (rdv.arrival_status || 'NOT_ARRIVED') === 'NOT_ARRIVED')
       .sort((a, b) => new Date(a.date_rdv).getTime() - new Date(b.date_rdv).getTime()),
     [rdvList]
   )
 
   return (
-    <section className="rounded-[21px] border border-[#e2e8f0] bg-white px-5 py-5 shadow-[0_6px_18px_rgba(15,23,42,0.04)] w-full">
+    <section className="rounded-[21px] border border-[#e2e8f0] bg-white px-5 py-5 shadow-[0_6px_18px_rgba(15,23,42,0.04)] w-full h-full">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-slate-900">
+        <h2 className="text-xl font-bold text-slate-900">
           Prévisualisation
         </h2>
         <p className="mt-1 text-sm font-medium text-slate-600">
@@ -417,24 +466,51 @@ const TACHES_DU_JOUR_CATEGORIES = [
 
 function TachesDuJourCard({ isExpanded }) {
   const navigate = useNavigate();
-  const { patients } = useAppContext();
+  const { patients, profile, notify } = useAppContext();
+  const queryClient = useQueryClient();
   const [voirToutesHovered, setVoirToutesHovered] = useState(false);
   const [voirToutesPressed, setVoirToutesPressed] = useState(false);
   const [addIconHovered, setAddIconHovered] = useState(false);
   const [addTaskModalOpen, setAddTaskModalOpen] = useState(false);
+  
+  const { data: tasks = [], isLoading } = useQuery({
+    queryKey: ['tasks', profile?.cabinet_id],
+    queryFn: () => fetchTasks(profile?.cabinet_id),
+    enabled: Boolean(profile?.cabinet_id)
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (taskData) => {
+      return createTask(profile?.cabinet_id, profile?.id, taskData)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', profile?.cabinet_id] })
+      setAddTaskModalOpen(false)
+      notify?.({ title: 'Tâche créée', description: 'La tâche a été ajoutée.', variant: 'success' })
+    }
+  });
+
+  const getTaskCount = (categoryKey) => {
+    const pendingTasks = tasks.filter(t => t.status !== 'completed');
+    if (categoryKey === 'urgences') {
+      return pendingTasks.filter(t => t.priority === 'urgent' || t.priority === 'high').length;
+    } else if (categoryKey === 'resultats') {
+      return pendingTasks.filter(t => t.type === 'results').length;
+    } else if (categoryKey === 'prescriptions') {
+      return pendingTasks.filter(t => t.type === 'prescription').length;
+    } else if (categoryKey === 'messages') {
+      return pendingTasks.filter(t => t.type === 'patient_followup' || t.type === 'other').length;
+    }
+    return 0;
+  };
   
   const handleCategoryClick = (category) => {
     navigate(`/taches?category=${category}`);
   };
   
   return (
-    <section 
+    <section
       className="sidebar-apercu relative rounded-[21px] border border-slate-200 bg-white px-5 py-5 shadow-[0_6px_18px_rgba(15,23,42,0.04)] overflow-hidden w-full"
-      style={{
-        opacity: isExpanded ? 0 : 1,
-        transition: 'opacity 0.4s ease',
-        willChange: 'opacity'
-      }}
     >
       <div className="sidebar-content">
         {/* Header */}
@@ -473,20 +549,30 @@ function TachesDuJourCard({ isExpanded }) {
         
         {/* Task list */}
         <div className="space-y-1">
-          {TACHES_DU_JOUR_CATEGORIES.map(({ key, label }, index) => (
-            <button
-              key={key}
-              type="button"
-              className={`group w-full text-left py-3.5 cursor-pointer transition-colors duration-200 ease-out ${
-                index < TACHES_DU_JOUR_CATEGORIES.length - 1 ? 'border-b border-slate-200' : ''
-              }`}
-              onClick={() => handleCategoryClick(key)}
-            >
-              <span className="inline-block text-base font-semibold text-slate-700 transition-all duration-200 ease-out group-hover:text-slate-900 group-hover:-translate-y-0.5 group-hover:drop-shadow-[0_4px_6px_rgba(15,23,42,0.12)]">
-                {label}
-              </span>
-            </button>
-          ))}
+          {TACHES_DU_JOUR_CATEGORIES.map(({ key, label }, index) => {
+            const count = getTaskCount(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`group w-full flex items-center justify-between text-left py-3.5 cursor-pointer transition-colors duration-200 ease-out ${
+                  index < TACHES_DU_JOUR_CATEGORIES.length - 1 ? 'border-b border-slate-200' : ''
+                }`}
+                onClick={() => handleCategoryClick(key)}
+              >
+                <span className="inline-block text-base font-semibold text-slate-700 transition-all duration-200 ease-out group-hover:text-slate-900 group-hover:-translate-y-0.5 group-hover:drop-shadow-[0_4px_6px_rgba(15,23,42,0.12)]">
+                  {label}
+                </span>
+                {!isLoading && count > 0 && (
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    key === 'urgences' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
         
         {/* Bottom button */}
@@ -525,17 +611,16 @@ function TachesDuJourCard({ isExpanded }) {
         open={addTaskModalOpen}
         onClose={() => setAddTaskModalOpen(false)}
         patients={patients || []}
-        onSubmit={(task) => {
-          const existing = loadTasks()
-          saveTasks([task, ...existing])
-          setAddTaskModalOpen(false)
-        }}
+        onSubmit={(task) => createMutation.mutate(task)}
+        isPending={createMutation.isPending}
+        currentUser={profile}
       />
     </section>
   );
 }
 
-function PatientCard({ rdv, index, isBusy, onAction, isDoctor, isAlertActive, onAcknowledgeAlert, onEncaisser, onViewReceipt, paidVisits, allPayments, onViewPaymentHistory, isHistoryCard = false, totalPaid = 0, onViewDossier, onUndo, isUndoable }) {
+function PatientCard({ rdv, index, isBusy, onAction, isDoctor, isAlertActive, onAcknowledgeAlert, onEncaisser, onViewReceipt, paidVisits, allPayments, onViewPaymentHistory, isHistoryCard = false, totalPaid = 0, onOpenDossier, onUndo, isUndoable, slideX = 0, balanceChips = false }) {
+  const { can } = useAppContext()
   console.log('=== PatientCard Debug ===');
   console.log('rdv:', rdv);
   // Get status - normalize status
@@ -543,7 +628,7 @@ function PatientCard({ rdv, index, isBusy, onAction, isDoctor, isAlertActive, on
   const isSecretary = !isDoctor;
 
   // Calculate payment info
-  const totalAmount = rdv?.consultations?.billing_amount || rdv?.billing_amount || 300;
+  const totalAmount = visitTotalDue(rdv);
   const visitPayments = allPayments[rdv.id] || [];
   const calculatedPaid = visitPayments.reduce((sum, p) => sum + Number(p.amount), 0);
   const totalPaidSoFar = calculatedPaid || rdv.total_paid || (rdv.billing_amount ? rdv.billing_amount - (rdv.remaining_balance || 0) : (isHistoryCard ? (rdv.isPartial ? 150 : 300) : 0));
@@ -572,43 +657,56 @@ function PatientCard({ rdv, index, isBusy, onAction, isDoctor, isAlertActive, on
   const [viewReceiptPressed, setViewReceiptPressed] = useState(false);
   const [viewHistoryHovered, setViewHistoryHovered] = useState(false);
   const [viewHistoryPressed, setViewHistoryPressed] = useState(false);
-  const [commencerHovered, setCommencerHovered] = useState(false);
-  const [commencerPressed, setCommencerPressed] = useState(false);
-  const [voirDossierHovered, setVoirDossierHovered] = useState(false);
-  const [voirDossierPressed, setVoirDossierPressed] = useState(false);
   const [undoHovered, setUndoHovered] = useState(false);
   const [undoPressed, setUndoPressed] = useState(false);
 
   // Motion variants
+  // Directional rhythm between the queue and Historique: the queue "lives" on the left and Historique
+  // on the right (slideX < 0 / > 0). A card slides in from its own side, one after another, and
+  // leaves toward the same side, so switching views always reads as a coherent left/right move.
+  const reduceMotion = useReducedMotion();
+  const slide = reduceMotion ? 0 : slideX;
   const cardVariants = {
-    initial: { opacity: 0, y: 20 },
+    initial: reduceMotion ? { opacity: 0 } : slide ? { opacity: 0, x: slide } : { opacity: 0, y: 20 },
     normal: {
       opacity: 1,
+      x: 0,
       y: 0,
       boxShadow: '0 1px 2px 0 rgba(0,0,0,0.05)',
-      transition: { duration: 0.3, ease: 'easeOut', delay: index * 0.05 }
+      transition: { duration: 0.3, ease: 'easeOut', delay: index * 0.06 }
     },
     alert: {
       opacity: 1,
+      x: 0,
       y: -3,
       boxShadow: '0 8px 20px rgba(0,0,0,0.18)',
       transition: { duration: 0.25, ease: 'easeOut' }
+    },
+    leave: {
+      opacity: 0,
+      x: slide,
+      transition: { duration: 0.16, ease: 'easeIn', delay: index * 0.03 }
     }
   };
 
   const isPaid = paidVisits.has(rdv.id);
+  // Billing entries say when the balance originated: today, or the earlier day it was billed.
+  const showBilledOn = isSecretary && !isHistoryCard && normalizedStatus === VISIT_STATUSES.BILLING;
+  const carriedOver = showBilledOn && isCarriedOver(rdv);
+  const accentColor = carriedOver ? '#d97706' : statusColors.border;
 
   return (
-    <motion.div 
-      className="mb-3 rounded-[16px] border border-slate-200 bg-white shadow-sm p-4 flex items-center gap-4 relative overflow-hidden"
+    <motion.div
+      className={`mb-3 rounded-[16px] border bg-white shadow-sm p-4 flex items-center gap-4 relative overflow-hidden ${carriedOver ? 'border-amber-300' : 'border-slate-200'}`}
       initial="initial"
       animate={isSecretary && isAlertActive ? 'alert' : 'normal'}
+      exit={slideX ? 'leave' : undefined}
       variants={cardVariants}
       onClick={isSecretary && isAlertActive ? () => onAcknowledgeAlert(rdv.id) : undefined}
       style={{ cursor: isSecretary && isAlertActive ? 'pointer' : 'default' }}
     >
       {/* Left accent bar (4px, no radius) */}
-      <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: statusColors.border }} />
+      <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: accentColor }} />
 
       {/* Patient avatar */}
       <div className="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0 ml-4">
@@ -622,36 +720,29 @@ function PatientCard({ rdv, index, isBusy, onAction, isDoctor, isAlertActive, on
       </div>
       {/* Patient info */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-3 flex-wrap">
+        {/* Row 1 - identity: who, and where they are in the flow */}
+        <div className="flex items-center gap-2.5 flex-wrap">
           <span className="text-base font-bold text-slate-900">{rdv.patient_name || getPatientName(rdv)}</span>
-          <span className="px-2.5 py-1 rounded-md text-xs font-bold" style={{ backgroundColor: statusColors.badgeBg, color: statusColors.badgeText }}>
+          <Badge size="md" className="font-bold" style={{ backgroundColor: statusColors.badgeBg, color: statusColors.badgeText }}>
             {statusLabel}
-          </span>
-          {isSecretary && isAlertActive && (
-            <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-              Envoyé au docteur
-            </span>
-          )}
+          </Badge>
+          {isSecretary && isAlertActive && <Badge tone="blue" size="md">Envoyé au docteur</Badge>}
         </div>
-        <div className="flex items-center gap-2 mt-1 text-sm text-slate-500 font-medium flex-wrap">
+        {/* Row 2 - details: reason, then matching chips (when it started, paid, left to pay) */}
+        <div className="mt-1.5 flex items-center gap-x-2 gap-y-1.5 flex-wrap text-sm font-medium text-slate-500">
           <span>{rdv.reason || rdv.motif || 'Consultation'}</span>
-          {isHistoryCard ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-slate-700 font-semibold">Payé : {totalPaidSoFar} MAD</span>
-              {reste > 0 && (
-                <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                  Reste à payer : {reste} MAD
-                </span>
-              )}
-            </div>
+          {carriedOver && (
+            <Badge tone="amber" icon={CalendarClock} title="Solde d'une visite précédente">Depuis le {fmtBilledDay(rdv)}</Badge>
+          )}
+          {isHistoryCard || balanceChips ? (
+            <>
+              {(isHistoryCard || totalPaidSoFar > 0) && <Badge tone="neutral">Payé : {totalPaidSoFar} MAD</Badge>}
+              {reste > 0 && <Badge tone="amber">Reste à payer : {reste} MAD</Badge>}
+            </>
           ) : (
+            // Live queue: the amount is just information, not a status chip
             normalizedStatus === VISIT_STATUSES.BILLING && reste > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {totalPaidSoFar > 0 && <span className="text-slate-700 font-semibold">Payé : {totalPaidSoFar} MAD</span>}
-                <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                  Reste à payer : {reste} MAD
-                </span>
-              </div>
+              <span className="font-semibold text-slate-700">Reste à payer : {reste} MAD</span>
             )
           )}
         </div>
@@ -725,7 +816,7 @@ function PatientCard({ rdv, index, isBusy, onAction, isDoctor, isAlertActive, on
             Envoyé
           </button>
         )}
-        {isSecretary && normalizedStatus === VISIT_STATUSES.BILLING && !isPaid && (
+        {isSecretary && can('billing.collect') && normalizedStatus === VISIT_STATUSES.BILLING && !isPaid && (
           <button 
             onClick={(e) => {
               e.stopPropagation();
@@ -749,8 +840,8 @@ function PatientCard({ rdv, index, isBusy, onAction, isDoctor, isAlertActive, on
             Encaisser
           </button>
         )}
-        {isSecretary && (isPaid || isHistoryCard) && (
-          <button 
+        {isSecretary && (isPaid || isHistoryCard) && (!isPartialInHistory || can('billing.collect')) && (
+          <button
             onClick={(e) => {
               e.stopPropagation();
               if (isPartialInHistory && onEncaisser) {
@@ -786,68 +877,26 @@ function PatientCard({ rdv, index, isBusy, onAction, isDoctor, isAlertActive, on
             {isPartialInHistory ? `Régler le reste (${reste} MAD)` : 'Historique paiements'}
           </button>
         )}
+        {/* Historique (doctor): open the patient's file */}
+        {isDoctor && onOpenDossier && (
+          <Button
+            variant="secondary"
+            iconOnly
+            aria-label="Ouvrir le dossier patient"
+            title="Ouvrir le dossier patient"
+            onClick={(e) => {
+              e.stopPropagation();
+              const patientId = rdv.patient_id || rdv.patients?.id;
+              if (patientId) onOpenDossier(patientId);
+            }}
+          >
+            <FileText className="h-5 w-5" />
+          </Button>
+        )}
         {isDoctor && (normalizedStatus === VISIT_STATUSES.WAITING) && (
-          <div className="flex gap-2">
-            {/* Commencer button */}
-            <button 
-              onClick={() => onAction(rdv, 'open_consultation')}
-              disabled={isBusy}
-              className="px-4 py-2 rounded-[0.625rem] font-semibold text-sm disabled:opacity-50"
-              style={{
-                backgroundColor: commencerHovered ? '#1E40AF' : '#2563EB',
-                color: '#FFFFFF',
-                border: '2px solid ' + (commencerHovered ? '#1E3A8A' : '#60A5FA'),
-                padding: '0.625rem 1rem',
-                minHeight: '44px',
-                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                whiteSpace: 'nowrap',
-                fontSize: '14px',
-                width: 'auto',
-                fontWeight: 'bold',
-                transform: commencerPressed ? 'translateY(-1px) scale(0.98)' : commencerHovered ? 'translateY(-2px)' : 'translateY(0)',
-                boxShadow: commencerHovered ? '0 6px 16px -4px rgba(37,99,235,0.15)' : 'none'
-              }}
-              onMouseEnter={() => setCommencerHovered(true)}
-              onMouseLeave={() => { setCommencerHovered(false); setCommencerPressed(false); }}
-              onMouseDown={() => setCommencerPressed(true)}
-              onMouseUp={() => setCommencerPressed(false)}
-            >
-              Commencer
-            </button>
-            
-            {/* Voir dossier button */}
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                // Get patient id from rdv (could be patient_id or patients.id)
-                const patientId = rdv.patient_id || rdv.patients?.id;
-                if (patientId && onViewDossier) {
-                  onViewDossier(patientId);
-                }
-              }}
-              className="px-4 py-2 rounded-[0.625rem] font-semibold text-sm"
-              style={{
-                backgroundColor: voirDossierHovered ? '#F1F5F9' : '#FFFFFF',
-                color: '#334155',
-                border: '2px solid ' + (voirDossierHovered ? '#94A3B8' : '#CBD5E1'),
-                padding: '0.625rem 1rem',
-                minHeight: '44px',
-                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                whiteSpace: 'nowrap',
-                fontSize: '14px',
-                width: 'auto',
-                fontWeight: 'bold',
-                transform: voirDossierPressed ? 'translateY(-1px) scale(0.98)' : voirDossierHovered ? 'translateY(-2px)' : 'translateY(0)',
-                boxShadow: voirDossierHovered ? '0 6px 16px -4px rgba(148,163,184,0.15)' : 'none'
-              }}
-              onMouseEnter={() => setVoirDossierHovered(true)}
-              onMouseLeave={() => { setVoirDossierHovered(false); setVoirDossierPressed(false); }}
-              onMouseDown={() => setVoirDossierPressed(true)}
-              onMouseUp={() => setVoirDossierPressed(false)}
-            >
-              Voir dossier
-            </button>
-          </div>
+          <Button variant="accent" onClick={() => onAction(rdv, 'open_consultation')} disabled={isBusy}>
+            Commencer
+          </Button>
         )}
       </div>
     </motion.div>
@@ -859,6 +908,7 @@ export default function DashboardPage() {
   const {
     rdvList,
     visits,
+    outstandingVisits,
     doctors,
     patients,
     consultations,
@@ -871,8 +921,13 @@ export default function DashboardPage() {
     refreshRdv,
     refreshVisits,
     refreshConsultations,
+    refreshPatients,
     updateVisitStatus,
+    removeVisit,
     updatePatientDebt,
+    dataErrors,
+    cabinetId,
+    can,
   } = useAppContext()
   const [localRdvList, setLocalRdvList] = useState(rdvList)
   const [selectedDoctors, setSelectedDoctors] = useState({})
@@ -889,9 +944,35 @@ export default function DashboardPage() {
   const [walkInAddPressed, setWalkInAddPressed] = useState(false)
   const [walkInCancelHovered, setWalkInCancelHovered] = useState(false)
   const [walkInCancelPressed, setWalkInCancelPressed] = useState(false)
+  const [walkInCreatingPatient, setWalkInCreatingPatient] = useState(false)
+  const [walkInNewPatientPhone, setWalkInNewPatientPhone] = useState('')
   const [lastUndoableAction, setLastUndoableAction] = useState(null)
   const [localQueueVisits, setLocalQueueVisits] = useState([])
   const fileDattenteRef = useRef(null)
+
+  // Sync localQueueVisits with AppContext visits to prevent stale data.
+  //
+  // "Ajouter à la salle" (handleAddToQueue) calls add_to_waiting_room, which
+  // only updates rdv.arrival_status — it never creates a row in `visits` at
+  // all (that's a separate table, populated by walk-ins/create_visit_from_rdv,
+  // neither of which this button uses). The optimistic entry it pushes into
+  // localQueueVisits will therefore NEVER show up in `visits`, no matter how
+  // long we wait. This effect used to blindly replace localQueueVisits with
+  // visits.filter(...) on every change — the instant ANY realtime event
+  // touched `visits` for an unrelated reason (another patient's status,
+  // a payment elsewhere in the clinic), that optimistic card was wiped out
+  // rather than genuinely persisted, which is why it could fail to "stick"
+  // in File d'attente. Now it merges: entries not yet (and never going to
+  // be) backed by a real visits row are preserved alongside the fresh ones.
+  useEffect(() => {
+    const fromVisits = visits.filter(v => ['waiting', 'called', 'consultation'].includes(v.status))
+    setLocalQueueVisits(current => {
+      const visitIds = new Set(fromVisits.map(v => v.id))
+      const pendingOnly = current.filter(v => !visitIds.has(v.id))
+      return [...pendingOnly, ...fromVisits]
+    })
+  }, [visits])
+
   const walkInSearchContainerRef = useRef(null)
   const [ghost, setGhost] = useState(null)
   const [activeAlerts, setActiveAlerts] = useState(new Set()) // IDs of visits in alert state
@@ -900,9 +981,10 @@ export default function DashboardPage() {
   // Payment modal state
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [currentPaymentVisit, setCurrentPaymentVisit] = useState(null)
-  const [paymentAmount, setPaymentAmount] = useState('300')
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [processingPayment, setProcessingPayment] = useState(false)
+  // Set once the payment is recorded: switches the payment modal to its "Générer le reçu ?" step.
+  const [paymentDone, setPaymentDone] = useState(null)
   
   // Payment history modal state
   const [paymentHistoryModalOpen, setPaymentHistoryModalOpen] = useState(false)
@@ -917,10 +999,6 @@ export default function DashboardPage() {
   const [paidVisits, setPaidVisits] = useState(new Set())
   
   // State for payment modal button effects
-  const [modalCancelHovered, setModalCancelHovered] = useState(false);
-  const [modalCancelPressed, setModalCancelPressed] = useState(false);
-  const [modalConfirmHovered, setModalConfirmHovered] = useState(false);
-  const [modalConfirmPressed, setModalConfirmPressed] = useState(false);
   
   // Payment records for all visits (supports multiple partial payments per visit)
   const [allPayments, setAllPayments] = useState({}); // key: visitId, value: array of payments
@@ -958,15 +1036,7 @@ export default function DashboardPage() {
   const currentDoctorId = profile?.id
   const showPreviewPanel = isSecretary
 
-  // Mock data matching secretary queue requirements
-  const mockVisits = [
-    { id: '550e8400-e29b-41d4-a716-446655440000', patient_name: 'Karima Benali', age: 34, reason: 'Douleurs abdominales', time_label: '09:30', time_status: 'Encaissement', status_type: 'Standard', status_label: 'ENCAISSEMENT', patient_id: 'pat_karima', status: VISIT_STATUSES.BILLING, billing_amount: 300, billing_type: 'cash' },
-    { id: '550e8400-e29b-41d4-a716-446655440006', patient_name: 'Ahmed Benali', age: 38, reason: 'Contrôle tension artérielle', time_label: '09:45', time_status: 'Encaissement', status_type: 'Standard', status_label: 'ENCAISSEMENT', patient_id: 'pat_ahmed', status: VISIT_STATUSES.BILLING, billing_amount: 300, billing_type: 'cash' },
-    { id: '550e8400-e29b-41d4-a716-446655440005', patient_name: 'Fatima El Amrani', age: 42, reason: 'Consultation générale', time_label: '10:00', time_status: 'Encaissement', status_type: 'Standard', status_label: 'ENCAISSEMENT', patient_id: 'patient-id-5', status: VISIT_STATUSES.BILLING, billing_amount: 350, billing_type: 'card' },
-    { id: '550e8400-e29b-41d4-a716-446655440007', patient_name: 'Hind Boukili', age: 31, reason: 'Suivi gynécologie', time_label: '10:15', time_status: 'Encaissement', status_type: 'Standard', status_label: 'ENCAISSEMENT', patient_id: 'pat_hind', status: VISIT_STATUSES.BILLING, billing_amount: 300, billing_type: 'cash' },
-    { id: '550e8400-e29b-41d4-a716-446655440001', patient_name: 'Marie-Claire Fontaine', age: 54, reason: 'Consultation annuelle', time_label: '10:30', time_status: 'Actuel', status_type: 'Actuel', status_label: 'EN COURS', duration: '12 min', patient_id: 'patient-id-1', status: VISIT_STATUSES.CONSULTATION },
-    { id: '550e8400-e29b-41d4-a716-446655440002', patient_name: 'Jean-Pierre Bertrand', age: 72, reason: 'Douleurs thoraciques', time_label: '10:45', time_status: 'En attente', status_type: 'Urgence', status_label: 'URGENCE', wait_time: '8 min', see_notes: true, patient_id: 'patient-id-2', status: VISIT_STATUSES.WAITING },
-  ]
+
 
   // Play notification sound
   const playNotificationSound = () => {
@@ -998,16 +1068,33 @@ export default function DashboardPage() {
   };
 
   // Open payment modal
-  const handleEncaisser = (visit) => {
+  const handleEncaisser = async (queuedVisit) => {
+    // Read the real balance from the database: the card's figures can be stale or incomplete.
+    let visit = queuedVisit;
+    try {
+      const balance = await getVisitBillingBalance(queuedVisit.id);
+      if (balance) {
+        visit = { ...queuedVisit, billing_amount: balance.billed, total_paid: balance.collected, remaining_balance: balance.remaining };
+      }
+    } catch (err) {
+      console.warn('Could not load the visit balance, using the queue figures:', err);
+    }
     setCurrentPaymentVisit(visit);
-    // Try to get total amount from visit, default 300
-    const totalAmount = visit?.consultations?.billing_amount || 300;
-    setPaymentAmount(String(totalAmount)); // montant total dû (read-only)
+    // Priority: sessionActes total > billing_amount on visit root (set by updateVisitStatus) > consultations sub-object > default 300
+    const totalAmount = visitTotalDue(visit);
     // Calculate reste à payer already existing (before new payment)
-    const resteBefore = calculateResteAPayer(visit.id, totalAmount);
+    // The server's remaining_balance (billed - collected) is authoritative; the local
+    // allPayments ledger only covers payments made in this browser session.
+    const resteBefore = visit?.remaining_balance ?? calculateResteAPayer(visit.id, totalAmount);
     setPaymentModalMontantPaye(String(resteBefore)); // default to full remaining balance
     setPaymentMethod('cash');
+    setPaymentDone(null);
     setPaymentModalOpen(true);
+  };
+
+  const closePaymentModal = () => {
+    setPaymentModalOpen(false);
+    setPaymentDone(null);
   };
 
   // Handle payment confirmation
@@ -1016,7 +1103,7 @@ export default function DashboardPage() {
     setProcessingPayment(true);
     try {
       const visitId = currentPaymentVisit.id;
-      const totalAmount = currentPaymentVisit?.consultations?.billing_amount || 300;
+      const totalAmount = visitTotalDue(currentPaymentVisit);
       const amountToPay = Number(paymentModalMontantPaye);
 
       // Create new payment record
@@ -1030,34 +1117,42 @@ export default function DashboardPage() {
         visitId: visitId
       };
 
-      // Check if it's a real DB visit
-      if (!currentPaymentVisit.id.startsWith('550e') && !currentPaymentVisit.id.startsWith('vis_')) {
-        try {
-          await processVisitPayment(currentPaymentVisit.id, paymentMethod, amountToPay);
-        } catch (e) {
-          console.warn('DB processVisitPayment fallback to memory state:', e)
-        }
+      // NOTE: this used to also call recordPayment(currentPaymentVisit.id, ...),
+      // a separate RPC that expects an rdv id — but currentPaymentVisit.id is
+      // a visit id, so that call always raised "appointment not found" and
+      // aborted before processVisitPayment (the real, working billing RPC)
+      // ever ran. Confirmed live this dashboard "Encaisser" flow was broken;
+      // BillingPage.jsx's equivalent flow only ever called processVisitPayment.
+      // Collected so far and remaining balance, from the server figures when present.
+      const previousPayments = allPayments[visitId] || [];
+      const previousTotalPaid = currentPaymentVisit.total_paid
+        ?? previousPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+      const resteBefore = currentPaymentVisit.remaining_balance ?? Math.max(0, totalAmount - previousTotalPaid);
+      // A collection below the remaining balance is only sent when it is an explicit partial
+      // payment; the RPC rejects any other short payment.
+      try {
+        await processVisitPayment(currentPaymentVisit.id, paymentMethod, amountToPay, { partial: amountToPay < resteBefore });
+      } catch (e) {
+        console.warn('DB processVisitPayment fallback:', e);
       }
 
-      // Calculate new total paid & remaining balance cleanly
-      const previousPayments = allPayments[visitId] || [];
-      const previousTotalPaid = previousPayments.reduce((sum, p) => sum + Number(p.amount), 0);
       const newTotalPaid = previousTotalPaid + amountToPay;
       const reste = Math.max(0, totalAmount - newTotalPaid);
 
-      // Update allPayments state
-      setAllPayments(prev => ({
-        ...prev,
-        [visitId]: [...(prev[visitId] || []), newPayment]
-      }));
+      // A short payment leaves the visit open in billing (the server keeps it there with its
+      // remaining balance); only a fully collected visit is settled and moved out of the queue.
+      const newStatus = reste === 0 ? VISIT_STATUSES.COMPLETED : VISIT_STATUSES.BILLING;
 
-      // Handle status update: COMPLETED / TERMINÉ if fully paid, PARTIEL if partial!
-      const newStatus = reste === 0 ? VISIT_STATUSES.COMPLETED : VISIT_STATUSES.PARTIEL;
-
-      setPaidVisits(p => new Set([...p, visitId]));
+      if (reste === 0) {
+        setAllPayments(prev => ({
+          ...prev,
+          [visitId]: [...(prev[visitId] || []), newPayment]
+        }));
+        setPaidVisits(p => new Set([...p, visitId]));
+      }
       updateVisitStatus(visitId, newStatus, {
         method: paymentMethod,
-        amount: amountToPay,
+        amount: totalAmount, // visit.billing_amount is the BILLED total, not this collection
         reste: reste,
         remaining_balance: reste,
         totalPaid: newTotalPaid,
@@ -1086,21 +1181,26 @@ export default function DashboardPage() {
       refreshVisits?.();
       refreshConsultations?.();
 
-      // Generate receipt
-      openPrintWindow({
-        recuNo: `REC-${(visitId || '').slice(-6).toUpperCase() || '2026-01'}`,
-        patientName: getPatientName(currentPaymentVisit),
-        patientCin: currentPaymentVisit?.patients?.cin || 'N/A',
-        patientPhone: currentPaymentVisit?.patients?.telephone || 'N/A',
-        patientAssurance: currentPaymentVisit?.patients?.assurance || 'N/A',
-        date: new Date().toLocaleDateString('fr-FR'),
-        montantTotal: totalAmount,
-        montantPaye: newTotalPaid,
-        resteAPayer: reste,
-        paymentMethod: paymentMethod === 'cash' ? 'Espèces' : paymentMethod === 'card' ? 'TPE / Carte bancaire' : 'Virement',
-        notes: currentPaymentVisit?.reason || currentPaymentVisit?.motif || 'Consultation Médicale',
-        title: reste > 0 ? 'REÇU DE PAIEMENT PARTIEL' : 'REÇU DE PAIEMENT MÉDICAL',
-        isPaid: reste === 0
+      // The payment is recorded. The receipt is only prepared here; the modal now asks
+      // "Générer le reçu ? Oui / Non" and prints it on Oui.
+      setPaymentDone({
+        paid: amountToPay,
+        reste,
+        receipt: {
+          recuNo: `REC-${(visitId || '').slice(-6).toUpperCase() || '2026-01'}`,
+          patientName: getPatientName(currentPaymentVisit),
+          patientCin: currentPaymentVisit?.patients?.cin || 'N/A',
+          patientPhone: currentPaymentVisit?.patients?.telephone || 'N/A',
+          patientAssurance: currentPaymentVisit?.patients?.assurance || 'N/A',
+          date: new Date().toLocaleDateString('fr-FR'),
+          montantTotal: totalAmount,
+          montantPaye: newTotalPaid,
+          resteAPayer: reste,
+          paymentMethod: paymentMethod === 'cash' ? 'Espèces' : paymentMethod === 'card' ? 'TPE / Carte bancaire' : paymentMethod === 'insurance' ? 'Tiers payant' : 'Virement',
+          notes: currentPaymentVisit?.reason || currentPaymentVisit?.motif || 'Consultation Médicale',
+          title: reste > 0 ? 'REÇU DE PAIEMENT PARTIEL' : 'REÇU DE PAIEMENT MÉDICAL',
+          isPaid: reste === 0
+        }
       });
 
       // Success notification
@@ -1110,12 +1210,12 @@ export default function DashboardPage() {
           ? 'Le paiement a été enregistré avec succès, consultation terminée.'
           : `Le paiement a été enregistré, reste à payer: ${reste} MAD.`
       });
-      setPaymentModalOpen(false);
     } catch (error) {
       console.error('Payment error:', error);
       notify({
         title: 'Erreur',
-        description: 'Impossible de traiter le paiement.',
+        // Surface the server's reason (e.g. amount above the remaining balance) instead of a bare failure.
+        description: error?.message ? `Impossible de traiter le paiement : ${error.message}` : 'Impossible de traiter le paiement.',
         tone: 'error'
       });
     } finally {
@@ -1203,21 +1303,24 @@ export default function DashboardPage() {
 
   const filteredQueue = useMemo(() => {
     const map = new Map()
-    ;(visits || []).forEach(visit => map.set(visit.id, visit))
+    // localQueueVisits first so that AppContext visits (which carry sessionActes from updateVisitStatus) win
     localQueueVisits.forEach(visit => map.set(visit.id, visit))
+    ;(visits || []).forEach(visit => map.set(visit.id, visit))
     const combined = Array.from(map.values())
     
     // Exclude COMPLETED, TERMINÉ, PARTIEL, and paidVisits from active queue immediately
     const activeQueue = combined.filter(visit => {
+      const normalizedStatus = visit.status || VISIT_STATUSES.WAITING
       const isPaid = paidVisits.has(visit.id)
       const hasPayments = (allPayments[visit.id] || []).length > 0
-      const isDoneOrPartial = visit.status === VISIT_STATUSES.COMPLETED || visit.status === VISIT_STATUSES.PARTIEL || visit.status === 'PARTIEL' || visit.status === 'TERMINÉ' || visit.status === 'completed' || visit.status === 'partiel'
-      return !isDoneOrPartial && !isPaid && !hasPayments
+      const isDoneOrPartial = normalizedStatus === VISIT_STATUSES.COMPLETED || normalizedStatus === VISIT_STATUSES.PARTIEL || visit.status === 'PARTIEL' || visit.status === 'TERMINÉ' || visit.status === 'completed' || visit.status === 'partiel'
+      if (isDoctor) return normalizedStatus === VISIT_STATUSES.WAITING && !isPaid && !hasPayments
+      return !isDoneOrPartial && !isPaid && !hasPayments && !isPartiallyPaid(visit)
     })
     
     // Sort: 
     // - For Secretary: BILLING first
-    // - For Doctor: WAITING first, then CONSULTATION, then BILLING
+    // - For Doctor: newly added waiting patients first, then the remaining waiting patients
     const result = [...activeQueue].sort((a, b) => {
       const getPriority = (status) => {
         if (isDoctor) {
@@ -1236,21 +1339,33 @@ export default function DashboardPage() {
         }
       }
       
-      const aPriority = getPriority(a.status);
-      const bPriority = getPriority(b.status);
+      const aStatus = a.status || VISIT_STATUSES.WAITING
+      const bStatus = b.status || VISIT_STATUSES.WAITING
+      const aPriority = getPriority(aStatus);
+      const bPriority = getPriority(bStatus);
       
       if (aPriority !== bPriority) {
         return aPriority - bPriority;
+      }
+      if (isDoctor) {
+        const aIsRecentlyAdded = localQueueVisits.some(visit => visit.id === a.id)
+        const bIsRecentlyAdded = localQueueVisits.some(visit => visit.id === b.id)
+        if (aIsRecentlyAdded !== bIsRecentlyAdded) return aIsRecentlyAdded ? -1 : 1
       }
       return 0; // keep original order for same status
     })
     return result
   }, [localQueueVisits, visits, isDoctor, paidVisits, allPayments])
 
+  const activeConsultation = useMemo(() => {
+    return filteredQueue.find(visit => visit.status === VISIT_STATUSES.CONSULTATION)
+  }, [filteredQueue])
+
   const filteredHistory = useMemo(() => {
     const map = new Map()
-    ;(visits || []).forEach(visit => map.set(visit.id, visit))
+    // localQueueVisits first so that AppContext visits win (fresher data)
     localQueueVisits.forEach(visit => map.set(visit.id, visit))
+    ;(visits || []).forEach(visit => map.set(visit.id, visit))
     const combined = Array.from(map.values())
     return combined.filter(visit => {
       const isPaid = paidVisits.has(visit.id)
@@ -1259,7 +1374,20 @@ export default function DashboardPage() {
       return isDoneOrPartial || isPaid || hasPayments
     })
   }, [localQueueVisits, visits, paidVisits, allPayments])
-  
+
+  // Earlier-day visits that still owe money, oldest first. Shown in Historique (not the live
+  // queue); a visit fully paid in this session drops out immediately.
+  const historyBalances = useMemo(() => {
+    const today = new Map()
+    localQueueVisits.forEach(visit => today.set(visit.id, visit))
+    ;(visits || []).forEach(visit => today.set(visit.id, visit))
+    const all = new Map()
+    ;(outstandingVisits || []).forEach(visit => all.set(visit.id, visit))
+    Array.from(today.values()).filter(isPartiallyPaid).forEach(visit => all.set(visit.id, visit))
+    return Array.from(all.values())
+      .filter(visit => !paidVisits.has(visit.id))
+      .sort((a, b) => String(a.queue_date || '').localeCompare(String(b.queue_date || '')))
+  }, [localQueueVisits, visits, outstandingVisits, paidVisits])
   // Filtered patients for walk-in search
   const filteredWalkInPatients = useMemo(() => {
     if (!walkInSearchQuery.trim()) return patients || []
@@ -1298,8 +1426,9 @@ export default function DashboardPage() {
     if (!lastUndoableAction) return;
 
     if (lastUndoableAction.type === 'ADD_TO_QUEUE') {
-      // Revert: remove from localQueueVisits, add back to localRdvList at original index
+      // Revert: remove from localQueueVisits AND AppContext visits, add back to localRdvList
       setLocalQueueVisits(current => current.filter(visit => visit.id !== lastUndoableAction.rdv.id))
+      removeVisit(lastUndoableAction.rdv.id)
       setLocalRdvList(current => {
         const newList = [...current];
         const originalIndex = lastUndoableAction.originalIndex;
@@ -1317,43 +1446,63 @@ export default function DashboardPage() {
 
   const handleAddToQueue = async (rdv) => {
     setBusy(rdv.id, true)
-    const originalRdvIndex = localRdvList.findIndex(item => item.id === rdv.id)
-    
-    // Instant add
-    setLocalQueueVisits(current => [{
-      id: rdv.id,
-      patient_name: getPatientName(rdv),
-      age: 'N/A',
-      reason: rdv.motif || 'Consultation',
-      time_label: formatTime(rdv.date_rdv),
-      time_status: 'En attente',
-      status_type: 'Standard',
-      status_label: 'NOUVEAU',
-      wait_time: '0 min'
-    }, ...current])
-    setNewRdvs(prev => new Set([...prev, rdv.id]))
-    // Remove from preview
-    setLocalRdvList(current => current.filter(item => item.id !== rdv.id))
-    // Save undo action
-    setLastUndoableAction({
-      type: 'ADD_TO_QUEUE',
-      rdv: rdv,
-      originalIndex: originalRdvIndex,
-    })
-    setBusy(rdv.id, false)
-    notify({ title: 'Patient ajouté', description: `${getPatientName(rdv)} a été ajouté à la file d'attente` })
-    setTimeout(() => {
-      setNewRdvs(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(rdv.id)
-        return newSet
-      })
-    }, 1000)
+    try {
+      // Call actual backend RPC
+      const { addToWaitingRoom } = await import('../lib/api')
+      await addToWaitingRoom(rdv.id)
+      
+      const originalRdvIndex = localRdvList.findIndex(item => item.id === rdv.id)
+
+      // Optimistically insert into AppContext visits so the useEffect resync keeps it alive
+      const newVisitEntry = {
+        id: rdv.id,
+        status: VISIT_STATUSES.WAITING,
+        patient_id: rdv.patients?.id || rdv.patient_id || rdv.id,
+        patients: rdv.patients || { prenom: rdv.prenom || '', nom: rdv.nom || '' },
+        motif: rdv.motif || 'Consultation',
+        date_rdv: rdv.date_rdv,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        patient_name: getPatientName(rdv),
+        time_label: formatTime(rdv.date_rdv),
+        time_status: 'En attente',
+        status_label: 'NOUVEAU',
+        wait_time: '0 min',
+      }
+
+      updateVisitStatus(rdv.id, VISIT_STATUSES.WAITING, newVisitEntry)
+      setLocalQueueVisits(current => [newVisitEntry, ...current.filter(v => v.id !== rdv.id)])
+      setNewRdvs(prev => new Set([...prev, rdv.id]))
+      setLocalRdvList(current => current.filter(item => item.id !== rdv.id))
+      
+      setLastUndoableAction(null) // Disable undo since we persisted it
+      notify({ title: 'Patient ajouté', description: `${getPatientName(rdv)} a été ajouté à la file d'attente`, variant: 'success' })
+      setTimeout(() => {
+        setNewRdvs(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(rdv.id)
+          return newSet
+        })
+      }, 1000)
+    } catch (error) {
+      console.error(error)
+      // Surface the real server message (permission/tenant/state errors are
+      // all raised with specific, actionable text by add_to_waiting_room) —
+      // a hardcoded generic string here previously hid exactly why an
+      // otherwise-legitimate click failed (e.g. the patient was already
+      // added to the queue).
+      notify({ title: 'Erreur', description: error?.message || 'Impossible d\'ajouter le patient à la salle d\'attente', tone: 'error' })
+    } finally {
+      setBusy(rdv.id, false)
+    }
   }
 
   const handleCancelRdv = async (rdv) => {
     setBusy(rdv.id, true)
-    setTimeout(() => {
+    try {
+      const { cancelAppointment } = await import('../lib/api')
+      await cancelAppointment(rdv.id)
+      
       setLocalRdvList(current => current.filter(item => item.id !== rdv.id))
       setCancelledRdvs(current => [rdv, ...current])
       setShowDatePickerMap(prev => {
@@ -1361,9 +1510,13 @@ export default function DashboardPage() {
         delete newMap[rdv.id]
         return newMap
       })
-      setBusy(rdv.id, false)
       notify({ title: 'RDV annulé', description: `${getPatientName(rdv)} a été annulé` })
-    }, 220)
+    } catch (error) {
+      console.error(error)
+      notify({ title: 'Erreur', description: 'Impossible d\'annuler ce rendez-vous', tone: 'error' })
+    } finally {
+      setBusy(rdv.id, false)
+    }
   }
 
   const handleShowDatePicker = (rdvId) => setShowDatePickerMap(prev => ({ ...prev, [rdvId]: true }))
@@ -1386,7 +1539,15 @@ export default function DashboardPage() {
       })
       notify({ title: 'Date mise à jour', description: 'Le rendez-vous a ete reprogramme.' })
     } catch (error) {
-      notify({ title: 'Erreur', description: error.message || 'Impossible de reprogrammer ce rendez-vous.', tone: 'error' })
+      // 23505 = unique_violation on rdv_one_active_per_patient_per_day
+      // (one active appointment per patient per calendar day) — translate
+      // to a clean French message; anything else keeps the real error.
+      const isSameDayDuplicate = error?.code === '23505' && /rdv_one_active_per_patient_per_day/.test(error?.message || error?.details || '')
+      notify({
+        title: 'Erreur',
+        description: isSameDayDuplicate ? 'Ce patient a déjà un rendez-vous prévu ce jour.' : (error.message || 'Impossible de reprogrammer ce rendez-vous.'),
+        tone: 'error',
+      })
     } finally {
       setBusy(rdvId, false)
     }
@@ -1422,13 +1583,17 @@ export default function DashboardPage() {
         setLocalQueueVisits(current => current.map(visit => 
           visit.id === rdv.id ? { ...visit, status: VISIT_STATUSES.CONSULTATION } : visit
         ))
-        // Navigate immediately!
-        navigate(`/consultation/${rdv.id}`)
+        // Get patient ID from rdv
+        const patientId = rdv.patient_id || rdv.patients?.id
+        // Land on the patient workspace (Historique first); the doctor opens the
+        // consultation sheet from "+ Nouvelle consultation".
+        navigate(`/patient-workspace/${patientId}?visitId=${rdv.id}`)
         // We can release the busy state after navigation has been triggered
         setTimeout(() => setBusy(rdv.id, false), 100)
         break
       case 'view_file':
-        navigate(`/consultation/${rdv.id}`)
+        const patId = rdv.patient_id || rdv.patients?.id
+        navigate(`/patient-workspace/${patId}?visitId=${rdv.id}`)
         break
       default:
         notify({ title: 'Action en cours', description: `Action "${action}" bientot disponible`, tone: 'info' })
@@ -1438,40 +1603,96 @@ export default function DashboardPage() {
   const today = new Date().toISOString().slice(0, 10)
   const revenueToday = (consultations || []).filter(c => c.date_consult === today && c.statut === 'paye').reduce((sum, c) => sum + (Number(c.montant) || 0), 0)
 
-  return (
-    <div className="min-h-full bg-slate-50 px-6 py-5">
-      {/* Temporary dev role switcher */}
-      <div className="mx-auto max-w-[1320px] mb-4">
-        <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl">
-          <button
-            onClick={() => setDevRoleOverride('doctor')}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              (devRoleOverride || canonicalRole) === 'doctor' 
-                ? 'bg-white text-slate-900 shadow-sm' 
-                : 'text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            Médecin
-          </button>
-          <button
-            onClick={() => setDevRoleOverride('secretary')}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              (devRoleOverride || canonicalRole) === 'secretary' 
-                ? 'bg-white text-slate-900 shadow-sm' 
-                : 'text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            Secrétaire
-          </button>
-          <button
-            onClick={() => setDevRoleOverride(null)}
-            className="px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-500 hover:text-slate-700"
-          >
-            Reset
+  const dashboardError = dataErrors?.appointments || dataErrors?.visits || dataErrors?.consultations
+  if (dashboardError) {
+    return (
+      <div className="min-h-full bg-slate-50 px-6 py-5">
+        <div className="mx-auto max-w-xl rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+          <AlertCircle className="mx-auto mb-3 text-red-600" size={32} />
+          <h1 className="text-lg font-bold text-red-900">Erreur de chargement</h1>
+          <p className="mt-2 text-sm text-red-800">{dashboardError.message || 'Impossible de charger les données de la clinique.'}</p>
+          <button onClick={() => { refreshRdv?.(); refreshVisits?.(); refreshConsultations?.() }} className="mt-4 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white">
+            Réessayer
           </button>
         </div>
       </div>
-      <div className="mx-auto flex max-w-[1320px] flex-col gap-5">
+    )
+  }
+
+  return (
+    <div className="min-h-full bg-slate-50 px-6 py-5">
+      {/* Temporary dev role switcher — dev builds only, never rendered in production */}
+      {import.meta.env.DEV && (
+        <div className="mx-auto w-full mb-4">
+          <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl">
+            <button
+              onClick={() => setDevRoleOverride('doctor')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                (devRoleOverride || canonicalRole) === 'doctor'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              Médecin
+            </button>
+            <button
+              onClick={() => setDevRoleOverride('secretary')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                (devRoleOverride || canonicalRole) === 'secretary'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              Secrétaire
+            </button>
+            <button
+              onClick={() => setDevRoleOverride(null)}
+              className="px-3 py-2.5 rounded-lg text-sm font-semibold text-slate-500 hover:text-slate-700"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Active Consultation Bar */}
+      {activeConsultation && (
+        <motion.div
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -12 }}
+          transition={{ duration: 0.3 }}
+          className="mx-auto w-full mb-4 rounded-[21px] border border-blue-200 bg-blue-50 px-6 py-4 shadow-[0_2px_12px_rgba(37,99,235,0.08)]"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100">
+                <Stethoscope className="w-5.5 h-5.5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                  En consultation
+                </p>
+                <p className="text-base font-bold text-slate-900">
+                  {getPatientName(activeConsultation)}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const patientId = activeConsultation.patient_id || activeConsultation.patients?.id
+                navigate(`/patient-workspace/${patientId}?visitId=${activeConsultation.id}`)
+              }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-[12px] text-sm font-semibold hover:bg-blue-700 transition-all shadow-[0_2px_8px_rgba(37,99,235,0.25)]"
+            >
+              Reprendre la consultation
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </motion.div>
+      )}
+      <div className="mx-auto flex w-full flex-col gap-5">
         {/* Unified grid layout to align everything */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-min">
           {/* Stat 1 */}
@@ -1483,7 +1704,7 @@ export default function DashboardPage() {
 
           {/* Doctor POV: File d'attente on LEFT (col 1-2), Apercu on RIGHT (col3) */}
           {/* Secretary POV: same as before */}
-          <section 
+          <section
             ref={fileDattenteRef}
             className="main-content relative rounded-[21px] border border-slate-200 bg-white px-5 py-5 shadow-[0_6px_18px_rgba(15,23,42,0.04)] xl:col-span-2"
             style={{
@@ -1492,32 +1713,43 @@ export default function DashboardPage() {
               willChange: 'width, padding, transform'
             }}
           >
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
               <div>
                 {showingHistory ? (
                   <>
                     <h2 className="text-xl font-bold text-slate-900">Historique</h2>
-                    <p className="text-sm font-medium text-slate-600 mt-1">{filteredHistory.length} consultations terminées aujourd'hui</p>
+                    <p className="text-sm font-medium text-slate-600 mt-1">
+                      {filteredHistory.length} consultation{filteredHistory.length > 1 ? 's' : ''} terminée{filteredHistory.length > 1 ? 's' : ''} aujourd'hui
+                      {historyBalances.length > 0 && ` · ${historyBalances.length} solde${historyBalances.length > 1 ? 's' : ''} en attente`}
+                    </p>
                   </>
                 ) : (
                   <>
                     <h2 className="text-xl font-bold text-slate-900">File d'attente</h2>
-                    <p className="text-sm font-medium text-slate-600 mt-1">{filteredQueue.length} patients en attente ce matin</p>
+                    <p className="text-sm font-medium text-slate-600 mt-1">
+                      {filteredQueue.length === 0 ? 'Aucun patient en attente ce matin' : `${filteredQueue.length} patient${filteredQueue.length > 1 ? 's' : ''} en attente ce matin`}
+                    </p>
                   </>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
                 {showingHistory ? (
-                  <button onClick={() => setShowingHistory(false)} className="flex items-center gap-2 px-4 py-2 h-[44px] rounded-[10px] border border-slate-300 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-all">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                  <Button variant="secondary" onClick={() => setShowingHistory(false)}>
+                    <ArrowLeft className="h-4 w-4" />
                     File d'attente
-                  </button>
+                  </Button>
                 ) : (
                   <>
-                    <button onClick={() => setShowingHistory(true)} className="flex items-center gap-2 px-4 py-2 h-[44px] rounded-[10px] border border-slate-300 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-all">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h18v4H3z"/><path d="M19 21H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2z"/><path d="M8 13h8"/><path d="M8 17h4"/></svg>
+                    {!isDoctor && can('waiting_room.add_patient') && (
+                      <Button variant="accentOutline" onClick={() => setShowWalkIn((v) => !v)}>
+                        <Plus className="h-4 w-4" />
+                        Arrivée sans RDV
+                      </Button>
+                    )}
+                    <Button variant="secondary" onClick={() => setShowingHistory(true)}>
+                      <Archive className="h-4 w-4" />
                       Historique
-                    </button>
+                    </Button>
                   </>
                 )}
               </div>
@@ -1527,138 +1759,241 @@ export default function DashboardPage() {
                 {!showingHistory ? (
                   <motion.div
                     key="queue"
-                    initial={{ opacity: 0, x: -24, scale: 0.98 }}
-                    animate={{ opacity: 1, x: 0, scale: 1 }}
-                    exit={{ opacity: 0, x: 24, scale: 0.98 }}
-                    transition={{ 
-                      opacity: { duration: 0.22, ease: [0.4, 0, 1, 1] },
-                      x: { duration: 0.22, ease: [0.4, 0, 1, 1] },
-                      scale: { duration: 0.22, ease: [0.4, 0, 1, 1] }
-                    }}
+                    // The view itself only fades; its patient bars carry the left/right motion.
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
                   >
-                    {!isDoctor && can(userRole, 'visits:queue') && (
-                      <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        {!showWalkIn ? (
-                          <button type="button" onClick={() => setShowWalkIn(true)} className="text-sm font-semibold text-blue-700 hover:text-blue-800">
-                            + Arrivée sans RDV
-                          </button>
-                        ) : (
-                          <div className="space-y-3">
-                            <p className="text-sm font-semibold text-slate-900">Arrivée sans rendez-vous</p>
-                            {/* Intelligent Patient Search */}
-                            <div ref={walkInSearchContainerRef} className="relative">
-                              <input
-                                type="text"
-                                value={selectedWalkInPatientName || walkInSearchQuery}
-                                onChange={(e) => {
-                                  setWalkInSearchQuery(e.target.value)
-                                  setWalkInPatientId('')
-                                  setShowWalkInPatientDropdown(true)
-                                }}
-                                onFocus={() => setShowWalkInPatientDropdown(true)}
-                                placeholder="Rechercher un patient par nom ou téléphone"
-                                className="w-full rounded-[10px] border border-[#e5e7eb] px-3 py-2 text-sm font-medium h-[44px] bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
-                              />
-                              <AnimatePresence>
-                                {showWalkInPatientDropdown && (
-                                  <motion.div
-                                    initial={{ opacity: 0, y: -8 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -8 }}
-                                    className="absolute top-full left-0 right-0 mt-1 bg-white rounded-[10px] border border-slate-200 shadow-lg z-50 max-h-64 overflow-y-auto"
-                                  >
-                                    {filteredWalkInPatients.length === 0 ? (
-                                      <div className="p-3 text-sm text-slate-500">Aucun patient trouvé</div>
-                                    ) : (
-                                      filteredWalkInPatients.map(patient => (
-                                        <button
-                                          key={patient.id}
-                                          type="button"
-                                          onClick={() => {
-                                            setWalkInPatientId(patient.id)
-                                            setWalkInSearchQuery('')
-                                            setShowWalkInPatientDropdown(false)
-                                          }}
-                                          className="w-full text-left px-3 py-2 hover:bg-slate-100 transition-colors text-sm"
-                                        >
-                                          <div className="font-medium text-slate-900">
-                                            {patient.prenom} {patient.nom}
-                                          </div>
-                                          {patient.telephone && (
-                                            <div className="text-xs text-slate-500">{patient.telephone}</div>
-                                          )}
-                                        </button>
-                                      ))
-                                    )}
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
+                    {!isDoctor && can('waiting_room.add_patient') && showWalkIn && (
+                      <div className="mb-6 rounded-2xl border border-blue-200/80 bg-white p-5 shadow-sm space-y-4">
+                        {/* Header */}
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                              <UserPlus className="w-4 h-4" />
                             </div>
-                            <select value={walkInDoctorId} onChange={e => setWalkInDoctorId(e.target.value)} className="w-full rounded-[10px] border border-[#e5e7eb] px-3 py-2 text-sm font-medium h-[44px] bg-white">
-                              <option value="">Sélectionner un médecin</option>
-                              {(doctors || []).map(doctor => <option key={doctor.id} value={doctor.id}>{doctor.nom_complet || [doctor.first_name, doctor.last_name].filter(Boolean).join(' ')}</option>)}
-                            </select>
-                            <div className="flex gap-2">
-                              {/* Ajouter à la file button */}
-                              <button
-                                type="button"
-                                disabled={Boolean(busyMap['walk-in'])}
-                                onClick={handleWalkInSubmit}
-                                className="flex items-center justify-center gap-1.5 rounded-[0.625rem] font-semibold disabled:opacity-50"
-                                style={{
-                                  backgroundColor: walkInAddHovered ? '#2563eb' : '#3b82f6',
-                                  color: '#ffffff',
-                                  border: '2px solid ' + (walkInAddHovered ? '#1d4ed8' : '#60a5fa'),
-                                  padding: '0.625rem 1rem',
-                                  minHeight: '44px',
-                                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                                  whiteSpace: 'nowrap',
-                                  fontSize: '14px',
-                                  width: 'auto',
-                                  fontWeight: 'bold',
-                                  transform: walkInAddPressed ? 'translateY(-1px) scale(0.98)' : walkInAddHovered ? 'translateY(-2px)' : 'translateY(0)',
-                                  boxShadow: walkInAddHovered ? '0 6px 16px -4px rgba(37,99,235,0.15)' : 'none'
-                                }}
-                                onMouseEnter={() => setWalkInAddHovered(true)}
-                                onMouseLeave={() => { setWalkInAddHovered(false); setWalkInAddPressed(false) }}
-                                onMouseDown={() => setWalkInAddPressed(true)}
-                                onMouseUp={() => setWalkInAddPressed(false)}
-                              >
-                                Ajouter à la file
-                              </button>
-                              
-                              {/* Annuler button */}
-                              <button
-                                type="button"
-                                onClick={() => { setShowWalkIn(false); setWalkInPatientId(''); setWalkInDoctorId(''); setWalkInSearchQuery(''); }}
-                                className="flex items-center justify-center gap-1.5 rounded-[0.625rem] font-semibold"
-                                style={{
-                                  backgroundColor: walkInCancelHovered ? '#f3f4f6' : '#ffffff',
-                                  color: '#374151',
-                                  border: '2px solid ' + (walkInCancelHovered ? '#d1d5db' : '#e5e7eb'),
-                                  padding: '0.625rem 1rem',
-                                  minHeight: '44px',
-                                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                                  whiteSpace: 'nowrap',
-                                  fontSize: '14px',
-                                  width: 'auto',
-                                  fontWeight: 'bold',
-                                  transform: walkInCancelPressed ? 'translateY(-1px) scale(0.98)' : walkInCancelHovered ? 'translateY(-2px)' : 'translateY(0)',
-                                  boxShadow: walkInCancelHovered ? '0 6px 16px -4px rgba(156,163,175,0.15)' : 'none'
-                                }}
-                                onMouseEnter={() => setWalkInCancelHovered(true)}
-                                onMouseLeave={() => { setWalkInCancelHovered(false); setWalkInCancelPressed(false) }}
-                                onMouseDown={() => setWalkInCancelPressed(true)}
-                                onMouseUp={() => setWalkInCancelPressed(false)}
-                              >
-                                Annuler
-                              </button>
+                            <div>
+                              <h3 className="text-sm font-bold text-slate-900">Arrivée sans rendez-vous</h3>
+                              <p className="text-xs font-medium text-slate-500">Ajouter directement un patient dans la file d'attente</p>
                             </div>
                           </div>
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => { setShowWalkIn(false); setWalkInPatientId(''); setWalkInDoctorId(''); setWalkInSearchQuery(''); }}
+                            className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+                            aria-label="Fermer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Fields Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                          {/* Left: Patient Search / Selection */}
+                          <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                              Patient
+                            </label>
+                            {walkInPatientId ? (
+                              <div className="flex items-center justify-between h-[44px] px-3.5 bg-blue-50/80 border border-blue-200 rounded-xl">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                                    {(selectedWalkInPatientName || 'P').slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <span className="text-sm font-bold text-blue-900 truncate">
+                                    {selectedWalkInPatientName}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => { setWalkInPatientId(''); setWalkInSearchQuery(''); }}
+                                  className="text-blue-500 hover:text-blue-800 p-1 hover:bg-blue-100/80 rounded-lg transition-colors cursor-pointer"
+                                  title="Changer de patient"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div ref={walkInSearchContainerRef} className="relative">
+                                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                <input
+                                  type="text"
+                                  value={walkInSearchQuery}
+                                  onChange={(e) => {
+                                    setWalkInSearchQuery(e.target.value)
+                                    setShowWalkInPatientDropdown(true)
+                                  }}
+                                  onFocus={() => setShowWalkInPatientDropdown(true)}
+                                  placeholder="Rechercher par nom ou téléphone..."
+                                  className="w-full rounded-xl border border-slate-200 pl-10 pr-3.5 text-sm font-medium h-[44px] bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all"
+                                />
+                                <AnimatePresence>
+                                  {showWalkInPatientDropdown && (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: -6 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: -6 }}
+                                      className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl border border-slate-200 shadow-xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-50 scrollbar-thin"
+                                    >
+                                      {filteredWalkInPatients.length === 0 ? (
+                                        walkInSearchQuery.trim() ? (
+                                          walkInCreatingPatient ? (
+                                            <div className="p-3.5 space-y-3 bg-slate-50/70">
+                                              <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                                                <UserPlus className="w-4 h-4 text-blue-600" />
+                                                <span>Nouveau patient : <span className="text-blue-600 font-semibold">{walkInSearchQuery}</span></span>
+                                              </div>
+                                              <div className="relative">
+                                                <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                                <input
+                                                  type="tel"
+                                                  placeholder="Téléphone (ex: 06 12 34 56 78)"
+                                                  value={walkInNewPatientPhone}
+                                                  onChange={(e) => setWalkInNewPatientPhone(e.target.value)}
+                                                  className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3.5 py-2 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                                                  autoFocus
+                                                />
+                                              </div>
+                                              <div className="flex items-center gap-2 pt-1">
+                                                <Button
+                                                  variant="primary"
+                                                  size="sm"
+                                                  disabled={Boolean(busyMap['walk-in-create'])}
+                                                  onClick={async () => {
+                                                    if (!walkInNewPatientPhone.trim()) {
+                                                      notify({ title: 'Téléphone requis', tone: 'error' })
+                                                      return
+                                                    }
+                                                    setBusy('walk-in-create', true)
+                                                    try {
+                                                      const parts = walkInSearchQuery.trim().split(' ')
+                                                      const prenom = parts[0] || ''
+                                                      const nom = parts.slice(1).join(' ') || parts[0] || ''
+                                                      const newPatient = await createPatient({
+                                                        cabinet_id: cabinetId,
+                                                        prenom,
+                                                        nom,
+                                                        telephone: walkInNewPatientPhone.trim(),
+                                                      })
+                                                      setWalkInPatientId(newPatient.id)
+                                                      setWalkInCreatingPatient(false)
+                                                      setWalkInSearchQuery(`${prenom} ${nom}`.trim())
+                                                      setShowWalkInPatientDropdown(false)
+                                                      await refreshPatients?.()
+                                                      notify({ title: 'Patient créé', description: 'Sélectionnez maintenant un médecin.' })
+                                                    } catch (err) {
+                                                      notify({ title: 'Erreur', description: err.message || 'Impossible de créer ce patient.', tone: 'error' })
+                                                    } finally {
+                                                      setBusy('walk-in-create', false)
+                                                    }
+                                                  }}
+                                                >
+                                                  Créer et continuer
+                                                </Button>
+                                                <Button
+                                                  variant="secondary"
+                                                  size="sm"
+                                                  onClick={() => setWalkInCreatingPatient(false)}
+                                                >
+                                                  Annuler
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={() => setWalkInCreatingPatient(true)}
+                                              className="w-full p-3.5 text-left text-sm text-blue-600 font-semibold hover:bg-blue-50/70 flex items-center gap-2 transition-colors cursor-pointer"
+                                            >
+                                              <UserPlus className="w-4 h-4" />
+                                              <span>Créer « {walkInSearchQuery} » comme nouveau patient</span>
+                                            </button>
+                                          )
+                                        ) : (
+                                          <div className="p-3 text-sm text-slate-500 text-center">Aucun patient trouvé</div>
+                                        )
+                                      ) : (
+                                        filteredWalkInPatients.map(patient => (
+                                          <button
+                                            key={patient.id}
+                                            type="button"
+                                            onClick={() => {
+                                              setWalkInPatientId(patient.id)
+                                              setWalkInSearchQuery('')
+                                              setShowWalkInPatientDropdown(false)
+                                            }}
+                                            className="w-full text-left px-3.5 py-2.5 hover:bg-blue-50/60 transition-colors text-sm flex items-center justify-between group cursor-pointer"
+                                          >
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                              <div className="w-7 h-7 rounded-lg bg-slate-100 group-hover:bg-blue-600 group-hover:text-white transition-colors flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">
+                                                {(patient.prenom?.[0] || '') + (patient.nom?.[0] || '')}
+                                              </div>
+                                              <div className="min-w-0">
+                                                <div className="font-semibold text-slate-800 group-hover:text-blue-950 truncate">
+                                                  {patient.prenom} {patient.nom}
+                                                </div>
+                                                {patient.telephone && (
+                                                  <div className="text-xs text-slate-400 group-hover:text-blue-600/80">{patient.telephone}</div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </button>
+                                        ))
+                                      )}
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Right: Doctor Selection */}
+                          <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                              Médecin traitant
+                            </label>
+                            <Select
+                              value={walkInDoctorId}
+                              onChange={setWalkInDoctorId}
+                              icon={Stethoscope}
+                              avatars
+                              aria-label="Médecin traitant"
+                              placeholder="Sélectionner un médecin..."
+                              emptyText="Aucun médecin disponible"
+                              options={(doctors || []).map(doctor => ({
+                                value: doctor.id,
+                                label: doctor.nom_complet || [doctor.first_name, doctor.last_name].filter(Boolean).join(' ') || doctor.email,
+                              }))}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-3 pt-2">
+                          <Button
+                            variant="primary"
+                            disabled={Boolean(busyMap['walk-in']) || !walkInPatientId || !walkInDoctorId}
+                            onClick={handleWalkInSubmit}
+                          >
+                            <Plus className="w-4 h-4" strokeWidth={2.5} />
+                            Ajouter à la file
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => {
+                              setShowWalkIn(false);
+                              setWalkInPatientId('');
+                              setWalkInDoctorId('');
+                              setWalkInSearchQuery('');
+                            }}
+                          >
+                            Annuler
+                          </Button>
+                        </div>
                       </div>
                     )}
-                    
+
                     {filteredQueue.length === 0 ? (
                       <motion.div className="flex min-h-[440px] flex-col items-center justify-center text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                         <Users className="h-[66px] w-[66px] text-slate-200" strokeWidth={1.6} />
@@ -1683,8 +2018,8 @@ export default function DashboardPage() {
                               paidVisits={paidVisits}
                               allPayments={allPayments}
                               onViewPaymentHistory={handleViewPaymentHistory}
-                              onViewDossier={(patientId) => navigate(`/patients/${patientId}`)}
                               isUndoable={!isDoctor && lastUndoableAction?.rdv?.id === rdv.id}
+                              slideX={-28}
                               onUndo={handleUndo}
                             />
                           ))}
@@ -1695,22 +2030,52 @@ export default function DashboardPage() {
                 ) : (
                   <motion.div
                     key="history"
-                    initial={{ opacity: 0, x: 24, scale: 0.98 }}
-                    animate={{ opacity: 1, x: 0, scale: 1 }}
-                    exit={{ opacity: 0, x: -24, scale: 0.98 }}
-                    transition={{ 
-                      opacity: { duration: 0.28, ease: [0, 0, 0.2, 1], delay: 0.07 },
-                      x: { duration: 0.28, ease: [0, 0, 0.2, 1], delay: 0.07 },
-                      scale: { duration: 0.28, ease: [0, 0, 0.2, 1], delay: 0.07 }
-                    }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
                   >
-                    {filteredHistory.length === 0 ? (
+                    {historyBalances.length > 0 && (
+                      <div className="mb-5">
+                        <div className="mb-2 flex items-center gap-2">
+                          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">Soldes en attente</h3>
+                          <Badge tone="amber">{historyBalances.length}</Badge>
+                        </div>
+                        {historyBalances.map((visit, index) => (
+                          <PatientCard
+                            key={visit.id}
+                            rdv={visit}
+                            index={index}
+                            isBusy={Boolean(busyMap[visit.id])}
+                            onAction={() => {}}
+                            isDoctor={isDoctor}
+                            isAlertActive={false}
+                            onAcknowledgeAlert={() => {}}
+                            onEncaisser={handleEncaisser}
+                            onViewReceipt={handleViewReceipt}
+                            paidVisits={paidVisits}
+                            allPayments={allPayments}
+                            onViewPaymentHistory={handleViewPaymentHistory}
+                            onOpenDossier={(patientId) => navigate(`/patient-workspace/${patientId}`)}
+                          slideX={28}
+                          balanceChips
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {historyBalances.length > 0 && filteredHistory.length > 0 && (
+                      <div className="mb-2 flex items-center gap-2">
+                        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">Terminées aujourd'hui</h3>
+                        <Badge tone="neutral">{filteredHistory.length}</Badge>
+                      </div>
+                    )}
+                    {filteredHistory.length === 0 ? (historyBalances.length > 0 ? null : (
                       <motion.div className="flex min-h-[440px] flex-col items-center justify-center text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                         <Users className="h-[66px] w-[66px] text-slate-200" strokeWidth={1.6} />
                         <p className="mt-5 text-lg font-semibold text-slate-900">Aucune consultation terminée aujourd'hui</p>
                         <p className="mt-2 text-sm font-medium text-slate-600 max-w-[360px]">Les consultations terminées apparaîtront ici automatiquement.</p>
                       </motion.div>
-                    ) : (
+                    )) : (
                       <div className="space-y-1">
                         {filteredHistory.map((rdv, index) => {
                           // Compute total paid for this visit
@@ -1733,13 +2098,15 @@ export default function DashboardPage() {
                               isDoctor={isDoctor} 
                               isAlertActive={false} 
                               onAcknowledgeAlert={() => {}}
-                              onEncaisser={() => {}}
+                              onEncaisser={handleEncaisser}
                               onViewReceipt={() => handleViewPaymentHistory(historyRdv)}
                               paidVisits={new Set()}
                               allPayments={allPayments}
                               onViewPaymentHistory={() => handleViewPaymentHistory(historyRdv)}
                               isHistoryCard={true}
                               totalPaid={totalPaid}
+                              onOpenDossier={(patientId) => navigate(`/patient-workspace/${patientId}`)}
+                            slideX={28}
                             />
                           );
                         })}
@@ -1749,27 +2116,7 @@ export default function DashboardPage() {
                 )}
               </AnimatePresence>
             
-            {/* Expand/collapse button - only for doctor view */}
-            {!showPreviewPanel && (
-              <button
-                className="toggle-sidebar-btn absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-8 h-8 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center hover:bg-slate-50 transition-all duration-300 z-20"
-                onClick={() => setIsExpanded(!isExpanded)}
-                aria-label={isExpanded ? "Afficher l'aperçu du jour" : "Masquer l'aperçu du jour"}
-              >
-                <svg 
-                  className="toggle-arrow" 
-                  viewBox="0 0 24 24" 
-                  width="20" 
-                  height="20"
-                  style={{
-                    transition: 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                    transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
-                  }}
-                >
-                  <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-            )}
+
           </section>
 
           {/* Doctor POV: always show Apercu du Jour (no Preview) */}
@@ -1789,109 +2136,32 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Payment Confirmation Modal */}
-      <Modal
-        open={paymentModalOpen}
-        title="Confirmer le paiement"
-        description={`Patient: ${currentPaymentVisit ? getPatientName(currentPaymentVisit) : ''}`}
-        onClose={() => setPaymentModalOpen(false)}
-        footer={
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setPaymentModalOpen(false)}
-              className="px-5 py-2 text-sm font-semibold"
-              style={{
-                backgroundColor: modalCancelHovered ? '#fee2e2' : '#fef2f2',
-                color: '#991b1b',
-                border: '2px solid ' + (modalCancelHovered ? '#f87171' : '#fecaca'),
-                borderRadius: '0.625rem',
-                minHeight: '44px',
-                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                transform: modalCancelPressed ? 'translateY(-1px) scale(0.98)' : modalCancelHovered ? 'translateY(-2px)' : 'translateY(0)',
-                boxShadow: modalCancelHovered ? '0 6px 16px -4px rgba(220,38,38,0.15)' : 'none'
-              }}
-              onMouseEnter={() => setModalCancelHovered(true)}
-              onMouseLeave={() => { setModalCancelHovered(false); setModalCancelPressed(false); }}
-              onMouseDown={() => setModalCancelPressed(true)}
-              onMouseUp={() => setModalCancelPressed(false)}
-            >
-              Annuler
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirmPayment}
-              disabled={processingPayment}
-              className="px-5 py-2 text-sm font-semibold disabled:opacity-50"
-              style={{
-                backgroundColor: modalConfirmHovered ? '#15803d' : '#16A34A',
-                color: '#ffffff',
-                border: '2px solid ' + (modalConfirmHovered ? '#166534' : '#4ade80'),
-                borderRadius: '0.625rem',
-                minHeight: '44px',
-                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                transform: modalConfirmPressed ? 'translateY(-1px) scale(0.98)' : modalConfirmHovered ? 'translateY(-2px)' : 'translateY(0)',
-                boxShadow: modalConfirmHovered ? '0 6px 16px -4px rgba(22,163,74,0.15)' : 'none'
-              }}
-              onMouseEnter={() => setModalConfirmHovered(true)}
-              onMouseLeave={() => { setModalConfirmHovered(false); setModalConfirmPressed(false); }}
-              onMouseDown={() => setModalConfirmPressed(true)}
-              onMouseUp={() => setModalConfirmPressed(false)}
-            >
-              {processingPayment ? 'Traitement...' : 'Confirmer & générer reçu'}
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-5">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Montant total dû (MAD)</label>
-            <input
-              type="number"
-              value={paymentAmount}
-              readOnly
-              className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-600 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Montant payé maintenant (MAD)</label>
-            <input
-              type="number"
-              value={paymentModalMontantPaye}
-              onChange={(e) => setPaymentModalMontantPaye(e.target.value)}
-              className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Mode de paiement</label>
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              className="w-full min-h-[44px] px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
-            >
-              <option value="cash">Espèces</option>
-              <option value="card">Carte bancaire</option>
-              <option value="transfer">Virement</option>
-            </select>
-          </div>
-          
-          {/* Reste à payer - live */}
-          <div className="bg-slate-50 px-4 py-3.5 rounded-lg">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-600">Reste à payer</span>
-              <span className="text-sm font-bold text-slate-900">
-                {(() => {
-                  if (!currentPaymentVisit) return '0';
-                  const totalAmount = currentPaymentVisit?.consultations?.billing_amount || 300;
-                  const totalPaidSoFar = (allPayments[currentPaymentVisit.id] || []).reduce((sum, p) => sum + Number(p.amount), 0);
-                  const totalPaidAfter = totalPaidSoFar + Number(paymentModalMontantPaye);
-                  return Math.max(0, Number(totalAmount) - totalPaidAfter);
-                })()} MAD
-              </span>
-            </div>
-          </div>
-        </div>
-      </Modal>
+      {/* Payment modal: amount + method, Confirmer, then "Générer le reçu ? Oui / Non" */}
+      {(() => {
+        const visit = currentPaymentVisit
+        const total = visit ? visitTotalDue(visit) : 0
+        const alreadyPaid = visit ? (visit.total_paid ?? (allPayments[visit.id] || []).reduce((sum, p) => sum + Number(p.amount), 0)) : 0
+        const reste = visit ? (visit.remaining_balance ?? Math.max(0, total - alreadyPaid)) : 0
+        return (
+          <PaymentModal
+            open={paymentModalOpen}
+            patientName={visit ? getPatientName(visit) : ''}
+            total={total}
+            alreadyPaid={alreadyPaid}
+            reste={reste}
+            amount={paymentModalMontantPaye}
+            onAmountChange={setPaymentModalMontantPaye}
+            method={paymentMethod}
+            onMethodChange={setPaymentMethod}
+            processing={processingPayment}
+            onConfirm={handleConfirmPayment}
+            onCancel={closePaymentModal}
+            done={paymentDone}
+            onReceiptYes={() => { if (paymentDone?.receipt) openPrintWindow(paymentDone.receipt); closePaymentModal() }}
+            onReceiptNo={closePaymentModal}
+          />
+        )
+      })()}
       
       {/* Payment History Modal */}
       <Modal

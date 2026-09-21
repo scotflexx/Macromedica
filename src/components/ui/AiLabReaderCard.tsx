@@ -39,7 +39,6 @@ export default function AiLabReaderCard() {
         })
         mimeType = file.type
       }
-
       const textPayload = manualText.trim() || `Analyse le fichier téléversé: ${file?.name || 'Labo'}`
       const res = await analyzeLabDocument(textPayload, base64Data, mimeType)
 
@@ -55,13 +54,13 @@ export default function AiLabReaderCard() {
 Date du prélèvement : 01/08/2026
 
 ⚠️ ANOMALIES DÉTECTÉES :
-- Glycémie à jeun : 1.25 g/L (Légèrement élevée - Limite pré-diabète)
-- Cholestérol LDL : 1.80 g/L (Élevé - Objectif < 1.15 g/L)
+• Glycémie à jeun : 1.28 g/L (Norme : 0.70 - 1.10) [Élevée]
+• Cholestérol Total : 2.45 g/L (Norme : < 2.00) [Élevé]
+• Triglycérides : 1.80 g/L (Norme : < 1.50) [Élevé]
 
 ✅ VALEURS NORMALES :
-- Hémogramme (NFS) : Sans anomalie
-- Fonction rénale (Créatinine, Urée) : Normale
-- Transaminases (ASAT/ALAT) : Normales
+• Hémoglobine : 14.2 g/dL
+• Créatinine : 8.5 mg/L (Clairance normale)
 
 💡 Synthèse IA : Patient présentant un risque métabolique modéré. Surveillance conseillée.`)
     } finally {

@@ -23,10 +23,18 @@ export default function AiScribeCard() {
 
   useEffect(() => {
     async function fetchPatients() {
-      const { data } = await supabase.from('patients').select('id, nom, prenom').order('nom')
-      if (data && data.length > 0) {
-        setPatients(data)
-      } else {
+      try {
+        const { data, error: patientsError } = await supabase.from('patients').select('id, nom, prenom').order('nom')
+        if (!patientsError && data && data.length > 0) {
+          setPatients(data)
+        } else {
+          setPatients([
+            { id: 'mock_p1', nom: 'Boukili', prenom: 'Hind' },
+            { id: 'mock_p2', nom: 'Tazi', prenom: 'Meryem' },
+            { id: 'mock_p3', nom: 'Idrissi', prenom: 'Youssef' }
+          ])
+        }
+      } catch {
         setPatients([
           { id: 'mock_p1', nom: 'Boukili', prenom: 'Hind' },
           { id: 'mock_p2', nom: 'Tazi', prenom: 'Meryem' },

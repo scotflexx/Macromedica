@@ -16,7 +16,6 @@ export default function AiDiagnosisCard() {
       const formatted = `🔍 ANALYSE CLINIQUE (Gemini 2.5 Flash)
 ${res.headline || ''}
 ${res.summary || ''}
-
 Hypothèses diagnostiques principales :
 ${(res.hypotheses || []).map((h: any, i: number) => `${i + 1}. ${h.disease} (${h.probability || 'Probabilité modérée'}) - ${h.reasoning || ''}`).join('\n')}
 
@@ -29,9 +28,10 @@ ${(res.cautions || []).map((c: string) => `- ${c}`).join('\n')}`
       setSuggestion(formatted)
     } catch {
       setSuggestion(`🔍 ANALYSE CLINIQUE (Fallback)
+
 Hypothèses diagnostiques principales :
-1. Angine bactérienne (Streptocoque A) - Probabilité forte
-2. Pharyngite virale - Probabilité modérée
+1. Rhinopharyngite / Angine virale
+2. Syndrome grippal débutant
 
 💊 PROTOCOLE DE TRAITEMENT PROPOSÉ :
 - Amoxicilline 1g : 1 comp. matin et soir (7 jours)

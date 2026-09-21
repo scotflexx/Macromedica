@@ -1,7 +1,7 @@
 import React from 'react'
-import { Building2, FileText, AlertCircle, ShieldAlert } from 'lucide-react'
+import { CheckCircle2, Phone, Building2, ShieldAlert } from 'lucide-react'
 
-export default function AdminTaskViewer({ task }) {
+export default function AdminTaskViewer({ task, onResolve, onContact, isProcessing }) {
   const isUrgent = task?.category === 'urgences' || task?.isUrgent || task?.status === 'CRITIQUE'
 
   return (
@@ -16,7 +16,7 @@ export default function AdminTaskViewer({ task }) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900">{task?.description || 'Dossier Administratif'}</h2>
+              <h2 className="text-base font-bold text-slate-900">{task?.description || 'Dossier Administratif & Secrétariat'}</h2>
               <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
                 isUrgent ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-100 text-slate-700 border-slate-200'
               }`}>
@@ -40,12 +40,12 @@ export default function AdminTaskViewer({ task }) {
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div>
           <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-400 mb-3">
-            Détails du dossier
+            Détails de la demande
           </h3>
 
           <div className="space-y-3.5 text-sm bg-slate-50/80 p-5 rounded-2xl border border-slate-200/80">
             <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
-              <span className="text-slate-500 font-medium">Objet / Motif:</span>
+              <span className="text-slate-500 font-medium">Type d'anomalie / Objet:</span>
               <span className="font-bold text-slate-900">{task?.description}</span>
             </div>
             <div className="flex items-center justify-between py-1 border-b border-slate-200/60">
@@ -54,15 +54,37 @@ export default function AdminTaskViewer({ task }) {
             </div>
             <div className="flex items-center justify-between py-1">
               <span className="text-slate-500 font-medium">Numéro de dossier / référence:</span>
-              <span className="font-semibold text-slate-700">#DOS-{task?.id?.slice(-6) || '2026-88'}</span>
+              <span className="font-semibold text-slate-700">#DOS-{task?.id?.slice?.(-6) || '2026-88'}</span>
             </div>
           </div>
         </div>
 
         {/* Action Instruction Box */}
         <div className="bg-blue-50/80 rounded-2xl p-4 border border-blue-100 text-sm text-blue-900 leading-relaxed font-medium">
-          💡 <strong>Instruction du système:</strong> Utilisez la barre d'action principale au bas du panneau pour encaisser le règlement, valider le dossier administratif ou contacter le patient.
+          💡 <strong>Action Recommandée:</strong> Vérifiez la pièce justificative manquante ou contactez le patient pour valider la prise en charge CNSS avant transmission administrative.
         </div>
+      </div>
+
+      {/* Bottom Sticky Actions */}
+      <div className="p-4 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
+        <button
+          type="button"
+          onClick={() => onContact?.(task)}
+          className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-sm font-bold flex items-center gap-2 transition-colors"
+        >
+          <Phone size={16} />
+          Contacter le patient
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onResolve?.(task)}
+          disabled={isProcessing}
+          className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold shadow-md transition-all duration-200 hover:-translate-y-0.5 active:scale-95 flex items-center gap-2 disabled:opacity-50"
+        >
+          <CheckCircle2 size={18} />
+          Valider & Transmettre
+        </button>
       </div>
     </div>
   )
