@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import {
   Patient, Consultation, StatutAttente, Rdv, TypeDocument, TypeMessage
 } from '../types'
+import { sanitizeCIN, sanitizeNumericOnly } from './fseSanitization'
 
 // — AUTH —
 export const login = async (
@@ -125,9 +126,14 @@ export const createPatient = async (
   // The clinical-field WRITE protection itself is unaffected — that's
   // enforced by the protect_patient_clinical_fields trigger, not by this
   // SELECT-privilege boundary, so a doctor's INSERT can still set them.
+  const sanitized = {
+    ...patient,
+    cin: patient.cin ? sanitizeCIN(patient.cin) : null,
+    numero_cnss: (patient as any).numero_cnss ? sanitizeNumericOnly((patient as any).numero_cnss) : null,
+  }
   const { data, error } = await supabase
     .from('patients')
-    .insert([patient])
+    .insert([sanitized])
     .select(PATIENT_ADMIN_COLUMNS)
     .single()
   if (error) throw error
@@ -140,9 +146,16 @@ export const updatePatient = async (
 ) => {
   // Same fix as createPatient above — bare .select() needs full-column
   // SELECT privilege authenticated doesn't have.
+  const sanitized = { ...updates }
+  if (sanitized.cin !== undefined) {
+    sanitized.cin = sanitized.cin ? sanitizeCIN(sanitized.cin) : null
+  }
+  if ((sanitized as any).numero_cnss !== undefined) {
+    (sanitized as any).numero_cnss = (sanitized as any).numero_cnss ? sanitizeNumericOnly((sanitized as any).numero_cnss) : null
+  }
   const { data, error } = await supabase
     .from('patients')
-    .update(updates)
+    .update(sanitized)
     .eq('id', id)
     .select(PATIENT_ADMIN_COLUMNS)
     .single()

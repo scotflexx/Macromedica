@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { FileText, Download, RefreshCw, UserCheck, Shuffle } from 'lucide-react'
+import toast, { Toaster } from 'react-hot-toast'
 import { generateFSE, mockPatients, mockPatientsEdgeCases } from './generateFSE'
 
 export default function FeuilleDeSoinsGenerator() {
@@ -26,6 +27,7 @@ export default function FeuilleDeSoinsGenerator() {
   }
 
   const handleGenerate = async (patientToUse = currentPatient, debug = isDebugMode) => {
+    if (isGenerating) return
     setIsGenerating(true)
     try {
       const patientObj = {
@@ -52,10 +54,13 @@ export default function FeuilleDeSoinsGenerator() {
       }
 
       const url = await generateFSE(patientObj, mockDoctor, consultObj, { debug })
-      if (url) setGeneratedPdfUrl(url)
+      if (url) {
+        setGeneratedPdfUrl(url)
+        toast.success('FSE téléchargée avec succès')
+      }
     } catch (err) {
       console.error('Error generating FSE:', err)
-      alert('Erreur lors de la génération de la Feuille de Soins.')
+      toast.error(err?.message || 'Erreur lors de la génération de la Feuille de Soins.')
     } finally {
       setIsGenerating(false)
     }
@@ -69,6 +74,7 @@ export default function FeuilleDeSoinsGenerator() {
 
   return (
     <div className="p-6 border border-gray-200 rounded-2xl bg-white shadow-sm space-y-5">
+      <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center font-bold">
@@ -87,27 +93,29 @@ export default function FeuilleDeSoinsGenerator() {
             <input
               type="checkbox"
               checked={isDebugMode}
+              disabled={isGenerating}
               onChange={(e) => {
                 const val = e.target.checked
                 setIsDebugMode(val)
                 if (generatedPdfUrl) handleGenerate(currentPatient, val)
               }}
-              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-50"
             />
             <span>Mode Repères (Debug)</span>
           </label>
 
           <button
+            type="button"
             onClick={() => handleGenerate(currentPatient, isDebugMode)}
             disabled={isGenerating}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {isGenerating ? (
               <RefreshCw size={15} className="animate-spin" />
             ) : (
               <Download size={15} />
             )}
-            <span>{isGenerating ? 'Génération en cours...' : 'Imprimer Feuille de Soins (PDF)'}</span>
+            <span>{isGenerating ? 'Génération...' : 'Imprimer Feuille de Soins (PDF)'}</span>
           </button>
         </div>
       </div>

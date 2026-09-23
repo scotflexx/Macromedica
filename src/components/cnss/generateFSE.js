@@ -142,27 +142,97 @@ export function cleanDateTo8Digits(dateStr) {
   return '';
 }
 
+import {
+  MOROCCAN_CIN_REGEX,
+  sanitizeCIN,
+  isValidCIN,
+  sanitizeNumericOnly,
+  isValidNumericCode,
+  FSE_VALIDATION_SCHEMA,
+  sanitizePatientData,
+  sanitizeDoctorData,
+  validateFseData,
+} from '../../lib/fseSanitization.js';
+
+export {
+  MOROCCAN_CIN_REGEX,
+  sanitizeCIN,
+  isValidCIN,
+  sanitizeNumericOnly,
+  isValidNumericCode,
+  FSE_VALIDATION_SCHEMA,
+  sanitizePatientData,
+  sanitizeDoctorData,
+  validateFseData,
+};
+
 /**
- * Validation function for CNSS Form Data
+ * writeText — PDF-Lib Dynamic Text Scaling with Overflow Protection
+ *
+ * Automatically measures string width using font.widthOfTextAtSize(text, size).
+ * If the text width exceeds maxWidth (default 200 points, the approximate width
+ * of the FSE name box), dynamically reduces the font size from default 10 down
+ * to a minimum of 6 until it fits. If it still exceeds the box at size 6,
+ * truncates the string and appends '...'.
+ *
+ * @param {PDFPage} page - pdf-lib PDFPage instance
+ * @param {string} text - string content to render
+ * @param {Object} options - { x, y, font, defaultSize = 10, minSize = 6, maxWidth = 200, color, align = 'left' }
+ * @returns {{ text: string, size: number, width: number }}
  */
-export function validateFseData(patient = {}, doctor = {}, consultation = {}) {
-  const warnings = [];
-  if (!patient.first_name && !patient.last_name && !patient.nomPrenom && !patient.name) {
-    warnings.push('Nom du patient manquant');
+export function writeText(page, text, options = {}) {
+  const {
+    x = 0,
+    y = 0,
+    font,
+    defaultSize = 10.0,
+    minSize = 6.0,
+    maxWidth = 200.0,
+    color = rgb(0.1, 0.3, 0.7),
+    align = 'left',
+  } = options;
+
+  let str = String(text || '').trim();
+  if (!str) return { text: '', size: defaultSize, width: 0 };
+
+  if (!font) {
+    throw new Error('writeText requires a valid pdf-lib font instance.');
   }
-  if (!patient.cnss_number && !patient.immatriculation) {
-    warnings.push('N° Immatriculation CNSS manquant');
+
+  let currentSize = defaultSize;
+  let textWidth = font.widthOfTextAtSize(str, currentSize);
+
+  // Dynamically reduce font size from default 10 down to minimum 6 until it fits
+  while (textWidth > maxWidth && currentSize > minSize) {
+    currentSize -= 0.5;
+    textWidth = font.widthOfTextAtSize(str, currentSize);
   }
-  if (!patient.cin) {
-    warnings.push('N° CIN manquant');
+
+  // If it still exceeds the box at size 6, truncate the string and append '...'
+  let finalText = str;
+  if (textWidth > maxWidth) {
+    currentSize = minSize;
+    const ellipsis = '...';
+    while (finalText.length > 0 && font.widthOfTextAtSize(finalText + ellipsis, currentSize) > maxWidth) {
+      finalText = finalText.slice(0, -1);
+    }
+    finalText = finalText ? finalText + ellipsis : ellipsis;
+    textWidth = font.widthOfTextAtSize(finalText, currentSize);
   }
-  if (!patient.date_of_birth && !patient.dateNaissance) {
-    warnings.push('Date de naissance manquante');
+
+  const finalX = align === 'center' ? x + (maxWidth - textWidth) / 2 : x;
+
+  if (page && typeof page.drawText === 'function') {
+    page.drawText(finalText, {
+      x: finalX,
+      y,
+      size: currentSize,
+      font,
+      color,
+    });
   }
-  return {
-    isValid: warnings.length === 0,
-    warnings,
-  };
+
+  return { text: finalText, size: currentSize, width: textWidth };
 }
 
 /**
@@ -303,7 +373,7 @@ export const generateFSE = async (dbPatient = {}, dbDoctor = {}, dbConsultation 
       }
     };
 
-    const drawTextInZone = (text, zone, defaultSize = 11.0, align = 'left', textFont = fontRegular) => {
+    const drawTextInZone = (text, zone, defaultSize = 10.0, align = 'left', textFont = fontRegular) => {
       if (!zone) return;
       const str = String(text || '').trim();
 
@@ -328,23 +398,23 @@ export const generateFSE = async (dbPatient = {}, dbDoctor = {}, dbConsultation 
 
       if (!str) return;
 
-      let s = defaultSize;
-      // Pre-scale if string length is > 30 characters (long names / addresses)
-      if (str.length > 30 && s > 9.0) {
-        s = 9.0;
-      }
-      let textWidth = textFont.widthOfTextAtSize(str, s);
-      while (textWidth > zone.width - 4 && s > 4.5) {
-        s -= 0.5;
-        textWidth = textFont.widthOfTextAtSize(str, s);
-      }
-
+      // Limit to 200 points max (FSE name box) or zone width
+      const targetMaxWidth = Math.min(zone.width || 200.0, 200.0);
+      const capHeight = textFont.heightAtSize(defaultSize, { descender: false }) || defaultSize * 0.7;
       const centerY = zone.y + zone.height / 2;
-      const capHeight = textFont.heightAtSize(s, { descender: false }) || s * 0.7;
-      const y = centerY - capHeight / 2;
-      const x = align === 'center' ? zone.x + (zone.width - textWidth) / 2 : zone.x + 3.0;
+      const targetY = centerY - capHeight / 2;
+      const targetX = align === 'center' ? zone.x : zone.x + 3.0;
 
-      page1.drawText(str, { x, y, size: s, font: textFont, color: INK_COLOR });
+      return writeText(page1, str, {
+        x: targetX,
+        y: targetY,
+        font: textFont,
+        defaultSize: defaultSize || 10.0,
+        minSize: 6.0,
+        maxWidth: targetMaxWidth,
+        color: INK_COLOR,
+        align,
+      });
     };
 
     const drawCheck = (box, defaultSize = 10.0) => {
@@ -388,65 +458,83 @@ export const generateFSE = async (dbPatient = {}, dbDoctor = {}, dbConsultation 
       }
     };
 
-    // 4. Extract data cleanly
+    // 4. Strict Moroccan Regex Sanitization before PDF injection
+    const sanitizedPatient = sanitizePatientData(dbPatient);
+    const sanitizedDoctor = sanitizeDoctorData(dbDoctor);
+
+    const validationResult = validateFseData(sanitizedPatient, sanitizedDoctor, dbConsultation);
+    if (!validationResult.isValid) {
+      console.warn('[generateFSE] Avertissements de validation des données FSE :', validationResult.errors);
+    }
+
     const fullName = (
-      dbPatient?.nomComplet ||
-      dbPatient?.nomPrenom ||
-      dbPatient?.name ||
-      `${dbPatient?.first_name || ''} ${dbPatient?.last_name || ''}`.trim()
+      sanitizedPatient.nomComplet ||
+      sanitizedPatient.nomPrenom ||
+      sanitizedPatient.name ||
+      `${sanitizedPatient.first_name || sanitizedPatient.prenom || ''} ${sanitizedPatient.last_name || sanitizedPatient.nom || ''}`.trim()
     ).toUpperCase();
 
-    const immat = dbPatient?.immatriculation || dbPatient?.cnss_number || '';
-    const cin = (dbPatient?.cin || '').toUpperCase();
-    const address = dbPatient?.adresse || dbPatient?.address || '';
+    // Immatriculation: Must be strictly numeric. Strip all spaces, dashes, or letters.
+    const immat = sanitizeNumericOnly(sanitizedPatient.immatriculation || sanitizedPatient.cnss_number);
+
+    // CIN: Must strictly match the Moroccan format: 1 or 2 uppercase letters followed by up to 6 digits (Regex: /^[A-Z]{1,2}\d{4,6}$/i). Strip all whitespace and special characters before testing.
+    const rawCin = sanitizedPatient.cin || '';
+    const cleanCin = sanitizeCIN(rawCin);
+    const cin = isValidCIN(cleanCin) ? cleanCin : '';
+    if (rawCin && !cin) {
+      console.warn(`[generateFSE] CIN ignoré car non conforme au format marocain (/^[A-Z]{1,2}\\d{4,6}$/i) : "${rawCin}"`);
+    }
+
+    const address = sanitizedPatient.adresse || sanitizedPatient.address || '';
     const totalAmount =
-      dbPatient?.montant != null
-        ? String(dbPatient.montant)
+      sanitizedPatient.montant != null
+        ? String(sanitizedPatient.montant)
         : dbConsultation?.price != null
         ? String(dbConsultation.price)
         : dbConsultation?.montantTotal || '150.00';
     const piecesCount = String(
       dbConsultation?.pieces_jointes ||
         dbConsultation?.piecesJointes ||
-        dbPatient?.pieces_jointes ||
+        sanitizedPatient.pieces_jointes ||
         '1'
     );
-    const birthDate8 = cleanDateTo8Digits(dbPatient?.dateNaissance || dbPatient?.date_of_birth);
-    const gender = (dbPatient?.sexe || dbPatient?.gender || '').toUpperCase();
+    const birthDate8 = cleanDateTo8Digits(sanitizedPatient.dateNaissance || sanitizedPatient.date_of_birth);
+    const gender = (sanitizedPatient.sexe || sanitizedPatient.gender || '').toUpperCase();
 
     // Doctor & Establishment Data
-    const inpe = dbDoctor?.inpe_code || dbDoctor?.inpe || '';
+    // INPE: Must be strictly numeric. Strip all spaces, dashes, or letters.
+    const inpe = sanitizeNumericOnly(sanitizedDoctor.inpe_code || sanitizedDoctor.inpe);
     const doctorName =
-      dbDoctor?.name ||
-      dbDoctor?.doctor_name ||
-      dbDoctor?.nom ||
-      (dbDoctor?.first_name ? `Dr. ${dbDoctor.first_name} ${dbDoctor.last_name || ''}` : '') ||
+      sanitizedDoctor.name ||
+      sanitizedDoctor.doctor_name ||
+      sanitizedDoctor.nom ||
+      (sanitizedDoctor.first_name ? `Dr. ${sanitizedDoctor.first_name} ${sanitizedDoctor.last_name || ''}` : '') ||
       '';
-    const doctorSpecialty = dbDoctor?.specialty || dbDoctor?.specialite || '';
+    const doctorSpecialty = sanitizedDoctor.specialty || sanitizedDoctor.specialite || '';
     const etablissementName =
-      dbDoctor?.etablissement ||
-      dbDoctor?.clinic_name ||
-      dbDoctor?.nom_etablissement ||
-      dbDoctor?.establishment ||
+      sanitizedDoctor.etablissement ||
+      sanitizedDoctor.clinic_name ||
+      sanitizedDoctor.nom_etablissement ||
+      sanitizedDoctor.establishment ||
       '';
-    const etablissementInpe = dbDoctor?.etablissement_inpe || dbDoctor?.inpe_etablissement || '';
+    const etablissementInpe = sanitizeNumericOnly(sanitizedDoctor.etablissement_inpe || sanitizedDoctor.inpe_etablissement);
 
-    const city = dbDoctor?.city || dbDoctor?.ville || 'Casablanca';
+    const city = sanitizedDoctor.city || sanitizedDoctor.ville || 'Casablanca';
     const rawConsultDate = dbConsultation?.date || new Date().toLocaleDateString('fr-FR');
     const consultDate8 = cleanDateTo8Digits(rawConsultDate);
-    const dossierNum = dbConsultation?.dossier_numero || dbPatient?.dossier_numero || '';
+    const dossierNum = dbConsultation?.dossier_numero || sanitizedPatient.dossier_numero || '';
 
     // 5. Fill fields with exact coordinate placements
     if (dossierNum) drawTextInZone(dossierNum, CNSS_EXACT_MAP.num_dossier, 8.5);
 
-    // Section 1: Assuré
-    if (fullName) drawTextInZone(fullName, CNSS_EXACT_MAP.assure_nom, 8.5);
+    // Section 1: Assuré (with dynamic scaling from 10 down to 6, truncating if > 200 pt)
+    if (fullName) drawTextInZone(fullName, CNSS_EXACT_MAP.assure_nom, 10.0);
     if (immat) drawArrayOfBoxes(immat, CNSS_EXACT_MAP.immatriculation, 8.5);
     if (cin) drawArrayOfBoxes(cin, CNSS_EXACT_MAP.cin_assure, 8.5);
 
-    if (dbPatient?.relation === 'conjoint' || dbPatient?.isConjoint) {
+    if (sanitizedPatient?.relation === 'conjoint' || sanitizedPatient?.isConjoint) {
       drawCheck(CNSS_EXACT_MAP.check_conjoint);
-    } else if (dbPatient?.relation === 'enfant' || dbPatient?.isEnfant) {
+    } else if (sanitizedPatient?.relation === 'enfant' || sanitizedPatient?.isEnfant) {
       drawCheck(CNSS_EXACT_MAP.check_enfant);
     }
 
@@ -454,8 +542,8 @@ export const generateFSE = async (dbPatient = {}, dbDoctor = {}, dbConsultation 
     if (totalAmount) drawTextInZone(totalAmount, CNSS_EXACT_MAP.montant_frais, 9.5, 'center');
     if (piecesCount) drawTextInZone(piecesCount, CNSS_EXACT_MAP.nombre_pieces, 9.0, 'center');
 
-    // Section 2: Bénéficiaire
-    if (fullName) drawTextInZone(fullName, CNSS_EXACT_MAP.beneficiaire_nom, 8.5);
+    // Section 2: Bénéficiaire (with dynamic scaling from 10 down to 6, truncating if > 200 pt)
+    if (fullName) drawTextInZone(fullName, CNSS_EXACT_MAP.beneficiaire_nom, 10.0);
     if (birthDate8) drawArrayOfBoxes(birthDate8, CNSS_EXACT_MAP.date_naissance, 8.5);
     if (cin) drawArrayOfBoxes(cin, CNSS_EXACT_MAP.cin_beneficiaire, 8.5);
 

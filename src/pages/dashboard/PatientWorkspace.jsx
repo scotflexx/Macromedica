@@ -67,6 +67,7 @@ import { fetchFactures } from '../../components/facturation/api'
 import { OrdonnancesList, ExamensList, ImagerieList, FacturesList } from '../../components/Patient/DossierRecords'
 import { Backdrop, FocusableCard, MedicalTextarea } from '../../components/FocusMode'
 import PreparationChecklist from '../../components/consultation/PreparationChecklist'
+import FsePatientTab from '../../components/cnss/FsePatientTab' // [FSE TAB]
 
 // --- Mock Data ---
 const MOCK_ALERTS = [
@@ -1286,20 +1287,21 @@ export default function PatientWorkspace() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.1 }}
             >
-              <nav role="tablist" className="grid w-full grid-cols-2 gap-1 rounded-2xl bg-gray-100 p-1 shadow-inner sm:grid-cols-5">
+              <nav role="tablist" className="flex w-full gap-1 rounded-2xl bg-gray-100 p-1 shadow-inner overflow-x-auto scrollbar-hide">
                 {[
                   { label: 'Historique', icon: Activity },
                   { label: 'Ordonnances', icon: Pill, count: derivedOrdonnances.length + (ordonnancesQ.data?.length || 0) },
                   { label: 'Examens', icon: TestTube2, count: derivedExamens.reduce((n, e) => n + e.items.length, 0) + documentsByKind.examens.length },
                   { label: 'Imagerie', icon: ImageIcon, count: documentsByKind.imagerie.length },
                   { label: 'Factures', icon: FileCheck2, count: (facturesQ.data?.length || 0) + documentsByKind.factures.length },
+                  { label: 'FSE CNSS', icon: FileText }, // [FSE TAB]
                 ].map(({ label: tab, icon: Icon, count }) => (
                   <button
                     key={tab}
                     role="tab"
                     aria-selected={activeTab === tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`relative flex min-w-0 items-center justify-center gap-1.5 px-3 py-2 text-[13px] font-semibold rounded-xl transition-colors duration-200 ${
+                    className={`relative flex flex-shrink-0 items-center justify-center gap-1.5 px-3 py-2 text-[13px] font-semibold rounded-xl transition-colors duration-200 ${
                       activeTab === tab ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
                     }`}
                   >
@@ -1311,7 +1313,7 @@ export default function PatientWorkspace() {
                         className="absolute inset-0 rounded-xl bg-white shadow-[0_2px_6px_rgba(0,0,0,0.08)]"
                       />
                     )}
-                    <span className="relative z-10 flex min-w-0 items-center gap-1.5">
+                    <span className="relative z-10 flex items-center gap-1.5 whitespace-nowrap">
                       <Icon className="h-3.5 w-3.5" />
                       {tab}
                       {count ? <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${activeTab === tab ? 'bg-slate-100 text-slate-600' : 'bg-slate-200/80 text-slate-500'}`}>{count}</span> : null}
@@ -1403,6 +1405,11 @@ export default function PatientWorkspace() {
                     onOpenFacturation={() => navigate('/facturation')}
                     extra={documentsByKind.factures.length > 0 ? <DossierRecordList title="Documents de paiement" subtitle="Documents du dossier" icon={FileCheck2} items={documentsByKind.factures} loading={false} emptyTitle="" emptyDescription="" tone="blue" /> : null}
                   />
+                )}
+
+                {/* [FSE TAB] — Remove this block + the import + the tab entry above to fully revert */}
+                {activeTab === 'FSE CNSS' && (
+                  <FsePatientTab patient={patient} profile={profile} />
                 )}
               </motion.div>
             </AnimatePresence>

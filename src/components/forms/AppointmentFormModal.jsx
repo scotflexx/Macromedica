@@ -7,6 +7,26 @@ import Modal from '../common/Modal'
 import { useAppContext } from '../../context/AppContext'
 import { useCabinetId } from '../../hooks/useCabinetId'
 import { createPatient, createRdv, getPatients, updateRdv as apiUpdateRdv } from '../../lib/api'
+import { sendRdvWhatsApp } from '../../controllers/whatsappController'
+
+const formatFrenchDate = (dateStr, timeStr) => {
+  try {
+    if (!dateStr) return ''
+    const parts = dateStr.split('-')
+    if (parts.length !== 3) return `${dateStr} à ${timeStr || ''}`
+    const [, month, day] = parts
+    const months = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+    ]
+    const monthIndex = parseInt(month, 10) - 1
+    const monthName = months[monthIndex] || month
+    const formattedTime = timeStr ? ` à ${timeStr.replace(':', 'h')}` : ''
+    return `${parseInt(day, 10)} ${monthName}${formattedTime}`
+  } catch {
+    return `${dateStr} à ${timeStr || ''}`
+  }
+}
 
 // Helper Functions for Appointment Meta
 const META_PREFIX = '__AGENDA_META__'
@@ -403,10 +423,20 @@ function AppointmentFormModal({
 
     try {
       let successMessage = 'Rendez-vous créé avec succès'
+      let waRecipient = null
       
       if (modalState === 'existing') {
         if (!validateExisting()) return
         
+        const selectedPat = (patients || []).find(p => p.id === existingForm.patientId)
+        if (selectedPat?.telephone) {
+          waRecipient = {
+            phone: selectedPat.telephone,
+            name: `${selectedPat.prenom || ''} ${selectedPat.nom || ''}`.trim(),
+            dateStr: formatFrenchDate(existingForm.date, existingForm.heure)
+          }
+        }
+
         if (appointment) {
           const currentNotes = appointment.notes
           const newNotes = buildAppointmentMeta(currentNotes, {
@@ -445,6 +475,14 @@ function AppointmentFormModal({
           telephone: rdvRapideForm.telephone.replace(/\s/g, ''),
         })
 
+        if (rdvRapideForm.telephone) {
+          waRecipient = {
+            phone: rdvRapideForm.telephone,
+            name: rdvRapideForm.nomPrenom,
+            dateStr: formatFrenchDate(rdvRapideForm.date, rdvRapideForm.heure)
+          }
+        }
+
         const newNotes = buildAppointmentMeta(null, {
           type: rdvRapideForm.type,
         })
@@ -473,6 +511,14 @@ function AppointmentFormModal({
           mutuelle: dossierCompletForm.mutuelle,
         })
 
+        if (dossierCompletForm.telephone) {
+          waRecipient = {
+            phone: dossierCompletForm.telephone,
+            name: `${dossierCompletForm.prenom || ''} ${dossierCompletForm.nom || ''}`.trim(),
+            dateStr: formatFrenchDate(dossierCompletForm.date, dossierCompletForm.heure)
+          }
+        }
+
         const newNotes = buildAppointmentMeta(null, {
           type: dossierCompletForm.type,
         })
@@ -488,8 +534,20 @@ function AppointmentFormModal({
         successMessage = 'Patient et rendez-vous créés avec succès'
       }
 
+      // Send WhatsApp confirmation notice if recipient info is available
+      if (waRecipient && waRecipient.phone) {
+        sendRdvWhatsApp(waRecipient.phone, waRecipient.name, waRecipient.dateStr)
+          .then(() => {
+            console.log(`✅ WhatsApp confirmation sent to ${waRecipient.phone}`)
+          })
+          .catch((waError) => {
+            console.warn('⚠️ WhatsApp confirmation could not be sent (appointment still saved):', waError?.response?.data || waError?.message)
+          })
+      }
+
       queryClient.invalidateQueries({ queryKey: ['patients'] })
       queryClient.invalidateQueries({ queryKey: ['appointments'] })
+
       
       notify({
         title: 'Succès',

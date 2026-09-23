@@ -4,8 +4,9 @@ import Modal from '../common/Modal'
 import { useAppContext } from '../../context/AppContext'
 import { useCabinetId } from '../../hooks/useCabinetId'
 import { createPatient, updatePatient as apiUpdatePatient, getPatientClinicalFields } from '../../lib/api'
+import { sanitizeCIN, isValidCIN, sanitizeNumericOnly } from '../../lib/fseSanitization'
 
-const initialForm = { prenom: '', nom: '', cin: '', sexe: '', date_naissance: '', telephone: '', email: '', adresse: '', ville: '', groupe_sanguin: '', allergies: '', antecedents: '', mutuelle: '' }
+const initialForm = { prenom: '', nom: '', cin: '', numero_cnss: '', sexe: '', date_naissance: '', telephone: '', email: '', adresse: '', ville: '', groupe_sanguin: '', allergies: '', antecedents: '', mutuelle: '' }
 const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
 
 function Label({ children, required, hint }) {
@@ -59,7 +60,7 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
 
   useEffect(() => {
     if (patient) {
-      setForm({ ...initialForm, prenom: patient.prenom || '', nom: patient.nom || '', cin: patient.cin || '', sexe: patient.sexe || '', date_naissance: patient.date_naissance || '', telephone: patient.telephone || '', email: patient.email || '', adresse: patient.adresse || '', ville: patient.ville || '', mutuelle: patient.mutuelle || '' })
+      setForm({ ...initialForm, prenom: patient.prenom || '', nom: patient.nom || '', cin: sanitizeCIN(patient.cin) || '', numero_cnss: sanitizeNumericOnly(patient.numero_cnss || patient.immatriculation) || '', sexe: patient.sexe || '', date_naissance: patient.date_naissance || '', telephone: patient.telephone || '', email: patient.email || '', adresse: patient.adresse || '', ville: patient.ville || '', mutuelle: patient.mutuelle || '' })
       if (canSeeClinical && patient.id) getPatientClinicalFields(patient.id).then((clinical) => {
         if (clinical) setForm((current) => {
           const next = { ...current, groupe_sanguin: clinical.groupe_sanguin || '', allergies: clinical.allergies || '', antecedents: clinical.antecedents || '' }
@@ -69,7 +70,7 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
       }).catch(() => {})
     } else setForm(initialForm)
     setError(''); setFieldErrors({})
-    setInitialSnapshot(JSON.stringify(patient ? { ...initialForm, prenom: patient.prenom || '', nom: patient.nom || '', cin: patient.cin || '', sexe: patient.sexe || '', date_naissance: patient.date_naissance || '', telephone: patient.telephone || '', email: patient.email || '', adresse: patient.adresse || '', ville: patient.ville || '', mutuelle: patient.mutuelle || '' } : initialForm))
+    setInitialSnapshot(JSON.stringify(patient ? { ...initialForm, prenom: patient.prenom || '', nom: patient.nom || '', cin: sanitizeCIN(patient.cin) || '', numero_cnss: sanitizeNumericOnly(patient.numero_cnss || patient.immatriculation) || '', sexe: patient.sexe || '', date_naissance: patient.date_naissance || '', telephone: patient.telephone || '', email: patient.email || '', adresse: patient.adresse || '', ville: patient.ville || '', mutuelle: patient.mutuelle || '' } : initialForm))
   }, [patient, open, canSeeClinical])
 
   const value = (key, next) => { setForm((current) => ({ ...current, [key]: next })); setFieldErrors((current) => ({ ...current, [key]: null })); setError('') }
@@ -84,6 +85,12 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
     if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) errors.email = 'Saisissez une adresse e-mail valide.'
     if (form.telephone.trim() && form.telephone.replace(/[^\d]/g, '').length < 8) errors.telephone = 'Saisissez un numéro de téléphone valide.'
     if (form.date_naissance && new Date(`${form.date_naissance}T00:00:00`) > new Date()) errors.date_naissance = 'La date ne peut pas être dans le futur.'
+    if (form.cin && form.cin.trim()) {
+      const cleanCin = sanitizeCIN(form.cin)
+      if (!isValidCIN(cleanCin)) {
+        errors.cin = 'Le CIN doit respecter le format marocain : 1 ou 2 lettres suivies de 4 à 6 chiffres (ex: AB123456).'
+      }
+    }
     setFieldErrors(errors); return !Object.keys(errors).length
   }
 
@@ -93,7 +100,22 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
     if (cabinetLoading) return setError('Chargement du profil en cours, veuillez réessayer dans un instant.')
     if (!cabinetId) return setError('Cabinet introuvable sur ce compte. Contactez un administrateur.')
     setLoading(true)
-    const payload = { prenom: form.prenom.trim(), nom: form.nom.trim(), cin: form.cin.trim() || null, sexe: form.sexe || null, date_naissance: form.date_naissance || null, telephone: form.telephone.trim() || null, email: form.email.trim() || null, adresse: form.adresse.trim() || null, ville: form.ville.trim() || null, groupe_sanguin: form.groupe_sanguin || null, allergies: form.allergies.trim() || null, antecedents: form.antecedents.trim() || null, mutuelle: form.mutuelle.trim() || null }
+    const payload = {
+      prenom: form.prenom.trim(),
+      nom: form.nom.trim(),
+      cin: form.cin.trim() ? sanitizeCIN(form.cin) : null,
+      numero_cnss: form.numero_cnss.trim() ? sanitizeNumericOnly(form.numero_cnss) : null,
+      sexe: form.sexe || null,
+      date_naissance: form.date_naissance || null,
+      telephone: form.telephone.trim() || null,
+      email: form.email.trim() || null,
+      adresse: form.adresse.trim() || null,
+      ville: form.ville.trim() || null,
+      groupe_sanguin: form.groupe_sanguin || null,
+      allergies: form.allergies.trim() || null,
+      antecedents: form.antecedents.trim() || null,
+      mutuelle: form.mutuelle.trim() || null,
+    }
     try {
       if (patient) await apiUpdatePatient(patient.id, payload); else await createPatient({ ...payload, cabinet_id: cabinetId })
       notify({ title: 'Dossier enregistré', description: patient ? 'Les informations du patient ont été mises à jour.' : 'Le nouveau dossier patient est prêt.' })
@@ -151,7 +173,7 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
         <Section icon={UserRound} tone="bg-blue-100 text-blue-700" title="Identité" subtitle="Pour retrouver le patient sans ambiguïté."><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <label><Label required>Prénom</Label><input autoFocus autoComplete="given-name" value={form.prenom} onChange={(e) => value('prenom', e.target.value)} className={input('prenom')} placeholder="ex. Salma" />{invalid('prenom')}</label>
           <label><Label required>Nom</Label><input autoComplete="family-name" value={form.nom} onChange={(e) => value('nom', e.target.value)} className={input('nom')} placeholder="ex. El Mansouri" />{invalid('nom')}</label>
-          <label><Label hint="Optionnel">CIN <button type="button" onClick={() => scanInputRef.current?.click()} className="ml-2 inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100"><ScanLine className="h-3 w-3" />Scanner</button></Label><input id="patient-cin" value={form.cin} onChange={(e) => value('cin', e.target.value.toUpperCase())} className={input('cin')} placeholder="ex. AB123456" /></label>
+          <label><Label hint="Optionnel">CIN <button type="button" onClick={() => scanInputRef.current?.click()} className="ml-2 inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100"><ScanLine className="h-3 w-3" />Scanner</button></Label><input id="patient-cin" value={form.cin} onChange={(e) => value('cin', sanitizeCIN(e.target.value))} className={input('cin')} placeholder="ex. AB123456" />{invalid('cin')}</label>
           <label><Label>Date de naissance</Label><div className="relative"><CalendarDays className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-400" /><input id="patient-date_naissance" type="date" value={form.date_naissance} onChange={(e) => value('date_naissance', e.target.value)} className={`${input('date_naissance')} pl-10`} /></div>{invalid('date_naissance')}</label>
         </div><div className="mt-4"><Label>Sexe</Label><div className="flex flex-wrap gap-2">{[['homme', 'Homme'], ['femme', 'Femme']].map(([sex, label]) => <button key={sex} type="button" onClick={() => value('sexe', form.sexe === sex ? '' : sex)} className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition ${form.sexe === sex ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300'}`}>{form.sexe === sex && <Check className="mr-1.5 inline h-3.5 w-3.5" />}{label}</button>)}</div></div><input ref={scanInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={scanIdentityDocument} />{scanState.loading || scanState.message ? <div className={`mt-4 flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs ${scanState.message.startsWith('Document lu') ? 'bg-emerald-50 text-emerald-800' : scanState.loading ? 'bg-blue-50 text-blue-800' : 'bg-amber-50 text-amber-800'}`}><Camera className="mt-0.5 h-4 w-4 shrink-0" />{scanState.loading ? <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" /> : null}<span>{scanState.message}</span>{!scanState.loading && <button type="button" onClick={() => setScanState({ loading: false, message: '' })} className="ml-auto rounded p-0.5 hover:bg-black/5"><X className="h-3.5 w-3.5" /></button>}</div> : null}</Section>
         <Section icon={Phone} tone="bg-emerald-100 text-emerald-700" title="Coordonnées" subtitle="Au moins un moyen de contact est recommandé."><div className="grid gap-4 md:grid-cols-2">
@@ -162,6 +184,7 @@ function PatientFormModal({ open, onClose, patient, onSuccess }) {
         </div></Section>
         <Section icon={Building2} tone="bg-violet-100 text-violet-700" title="Couverture & informations médicales" subtitle="À compléter si elles sont disponibles."><div className="grid gap-4 md:grid-cols-2">
           <label><Label>Mutuelle / assurance</Label><input value={form.mutuelle} onChange={(e) => value('mutuelle', e.target.value)} className={input('mutuelle')} placeholder="ex. CNOPS, AXA…" /><QuickSuggestions options={['CNOPS', 'CNSS', 'AXA', 'RMA', 'Wafa Assurance']} onSelect={(option) => value('mutuelle', option)} /></label>
+          <label><Label hint="Chiffres uniquement">N° Immatriculation CNSS</Label><input value={form.numero_cnss || ''} onChange={(e) => value('numero_cnss', sanitizeNumericOnly(e.target.value))} className={input('numero_cnss')} placeholder="ex. 112233445" /></label>
           {canSeeClinical && <label><Label>Groupe sanguin</Label><div className="relative"><Droplets className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-rose-400" /><select value={form.groupe_sanguin} onChange={(e) => value('groupe_sanguin', e.target.value)} className={`${input('groupe_sanguin')} appearance-none pl-10`}><option value="">Non renseigné</option>{BLOOD_TYPES.map((group) => <option key={group}>{group}</option>)}</select></div></label>}
           {canSeeClinical && <><label className="md:col-span-2"><Label hint="Visible uniquement par le corps médical">Allergies</Label><textarea rows={2} value={form.allergies} onChange={(e) => value('allergies', e.target.value)} className={`${input('allergies')} resize-y`} placeholder="Aucune allergie connue, ou précisez…" /><QuickSuggestions options={['Aucune allergie connue', 'Pénicilline', 'AINS', 'Latex']} onSelect={(option) => value('allergies', option)} /></label><label className="md:col-span-2"><Label hint="Visible uniquement par le corps médical">Antécédents médicaux</Label><textarea rows={2} value={form.antecedents} onChange={(e) => value('antecedents', e.target.value)} className={`${input('antecedents')} resize-y`} placeholder="Informations pertinentes pour la prise en charge…" /><QuickSuggestions options={['Aucun antécédent connu', 'HTA', 'Diabète', 'Asthme']} onSelect={(option) => value('antecedents', option)} /></label></>}
         </div>{canSeeClinical && <div className="mt-4 flex items-start gap-2 rounded-xl bg-violet-50 px-3 py-2.5 text-xs text-violet-800"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />Les informations médicales sont protégées et réservées aux utilisateurs autorisés.</div>}</Section>
