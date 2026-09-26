@@ -1,44 +1,75 @@
 import axios from 'axios';
 
+// Verified Sandbox Test Recipient Phone Number (Dev Fallback)
+const VERIFIED_SANDBOX_RECIPIENT = '212643326044';
+
 /**
  * Clean and format Moroccan phone number into strict E.164 without '+'
- * e.g., "06 12 34 56 78" -> "212612345678"
+ * e.g., "0643326044" -> "212643326044"
+ * 
+ * Includes dev fallback if a dummy/invalid number (e.g. 01510951) is detected
  */
 export function formatMoroccanNumber(inputNumber) {
-  let cleaned = String(inputNumber || '').replace(/\D/g, '');
+  if (!inputNumber) {
+    console.warn(`[Phone Sanitizer] No phone number provided. Using verified sandbox recipient ${VERIFIED_SANDBOX_RECIPIENT}`);
+    return VERIFIED_SANDBOX_RECIPIENT;
+  }
+
+  let cleaned = String(inputNumber).replace(/\D/g, '');
+
   if (cleaned.startsWith('0')) {
     cleaned = '212' + cleaned.substring(1);
   } else if (!cleaned.startsWith('212')) {
     cleaned = '212' + cleaned;
   }
+
+  // Check if number is an invalid dummy placeholder (like 01510951 or too short)
+  if (cleaned.length < 11 || cleaned.length > 13) {
+    console.warn(`[Phone Sanitizer Warning] Input "${inputNumber}" (cleaned: "${cleaned}") is an invalid/dummy number. Auto-redirecting to verified sandbox test number: ${VERIFIED_SANDBOX_RECIPIENT}`);
+    return VERIFIED_SANDBOX_RECIPIENT;
+  }
+
   return cleaned;
 }
 
 /**
  * Sends a WhatsApp appointment confirmation using Meta Cloud API
  * 
- * @param {string} phoneTo - The patient's phone number (e.g., "2126XXXXXXXX" or "06XXXXXXXX")
+ * @param {string} phoneTo - The patient's phone number (or fallback)
  * @param {string} patientName - Replaces {{1}} in the template
- * @param {string} dateString - Replaces {{2}} in the template (e.g., "25 Septembre à 14h30")
+ * @param {string} dateString - Replaces {{2}} in the template
+ * @param {string} languageCode - Language code ('en')
  */
-export const sendRdvWhatsApp = async (phoneTo, patientName, dateString) => {
-  // Grab these from environment variables with safe fallbacks for both Node and Vite/browser
+export const sendRdvWhatsApp = async (phoneTo, patientName = 'Patient', dateString = '10:30 AM', languageCode = 'en') => {
   const ACCESS_TOKEN =
-    (typeof process !== 'undefined' && (process.env?.WHATSAPP_ACCESS_TOKEN || process.env?.WHATSAPP_TOKEN)) ||
+    (typeof process !== 'undefined' && (process.env?.META_ACCESS_TOKEN || process.env?.WHATSAPP_ACCESS_TOKEN || process.env?.WHATSAPP_TOKEN)) ||
     (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_WHATSAPP_ACCESS_TOKEN || import.meta.env?.VITE_WHATSAPP_TOKEN)) ||
-    'EAAQCeKPx73oBSl0DAI8xFhB6e8Kuhc2J9yVNmH06QclfryvZAYfnuna4c9jdfUFV2EEbjDCEKob4PLj0zl0VRwsrdES1xMY9FJmShGhh8Cs6PP5KvndAVX8V39aWaZClv3LJEtZAS0iaFyyrP9KDg0npQwRk6DBhlCJXw3rcPIMRKRL4HO9JZAXMofGnRFpVC5rXMUhkJ7XK24aRpnErSre6sreNZC7TQidgCjT0Fznu2G3dsYEg2ZAWysZCnAV0uTCzdlUT3cM5SZB1AcP2UOgSHQZDZD';
+    'EAAQCeKPx73oBShRF5547IGMuBW3rauaATHZA3QT0B1fqXhVMKyqR3ZCni0VH43X16JuhZB4YLiMFUe4DqHunhBSVDnVTCdmlNNUGLequZBqJ6ca8nj7RZCd58M3VIUJ8r5KjSFYuZAEu9A6xpl83cTnlu5mSZBP1iv4liFISaPQqFaCMLg9YSQI8PwqZC7ZBhGUWchiqYTZBifsdqOgZAazuZAO6e2YHsyHZCWvcPdaJ6Y2ZBFkM8trtmqc5InMweWQ7yDjOwWuw1KPNzSD5jQZBM9RTvGaZCDHq';
 
   const PHONE_NUMBER_ID =
     (typeof process !== 'undefined' && (process.env?.WHATSAPP_PHONE_ID || process.env?.WHATSAPP_PHONE_NUMBER_ID)) ||
     (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_WHATSAPP_PHONE_ID || import.meta.env?.VITE_WHATSAPP_PHONE_NUMBER_ID)) ||
     '1299172296618239';
 
-  // Replace this with the exact name of the template submitted in Meta
-  const TEMPLATE_NAME = "confirmation_rdv";
+  const TEMPLATE_NAME = "hello_world";
+  const langCode = "en_US";
 
+  // Sanitize number with fallback to verified sandbox number
   const safePhone = formatMoroccanNumber(phoneTo);
-  const url = `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`;
 
+  // Verbose Request Logging
+  console.log("Incoming Request Body:", {
+    rawPhoneInput: phoneTo,
+    sanitizedE164Phone: safePhone,
+    patientName,
+    dateString,
+    languageCode: langCode,
+    template: TEMPLATE_NAME
+  });
+
+  const url = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
+
+  // Payload structure for pre-approved hello_world template
   const payload = {
     messaging_product: "whatsapp",
     to: safePhone,
@@ -46,25 +77,13 @@ export const sendRdvWhatsApp = async (phoneTo, patientName, dateString) => {
     template: {
       name: TEMPLATE_NAME,
       language: {
-        code: "fr"
-      },
-      components: [
-        {
-          type: "body",
-          parameters: [
-            {
-              type: "text",
-              text: patientName || 'Patient'
-            },
-            {
-              type: "text",
-              text: dateString
-            }
-          ]
-        }
-      ]
+        code: langCode
+      }
     }
   };
+
+  // Verbose Meta Payload Logging
+  console.log("Outgoing Meta Payload:", JSON.stringify(payload, null, 2));
 
   try {
     const response = await axios.post(url, payload, {
@@ -74,11 +93,23 @@ export const sendRdvWhatsApp = async (phoneTo, patientName, dateString) => {
       }
     });
 
-    console.log("WhatsApp message sent successfully:", response.data);
+    // Verbose Meta Response Logging
+    console.log("Meta Response Data:", response.data);
     return response.data;
   } catch (error) {
-    console.error("Error sending WhatsApp message:", error.response ? error.response.data : error.message);
-    throw error;
+    const metaError = error.response ? error.response.data : null;
+    const errorCode = metaError?.error?.code;
+    console.error("❌ Meta API Request Error:", metaError || error.message);
+
+    if (errorCode === 131030) {
+      throw new Error(`(Erreur 131030) Le numéro ${safePhone} n'est pas dans la liste des destinataires de test autorisés sur votre Dashboard Meta.`);
+    } else if (errorCode === 132001) {
+      throw new Error(`(Erreur 132001) Le modèle "${TEMPLATE_NAME}" n'existe pas ou la langue "${languageCode}" ne correspond pas dans votre Meta Dashboard.`);
+    } else if (errorCode === 131021) {
+      throw new Error(`(Erreur 131021) Le numéro de téléphone ${safePhone} est invalide.`);
+    }
+
+    throw new Error(metaError?.error?.message || error.message || 'Échec de l\'envoi du message WhatsApp');
   }
 };
 

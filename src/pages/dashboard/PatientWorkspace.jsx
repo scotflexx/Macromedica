@@ -68,6 +68,7 @@ import { OrdonnancesList, ExamensList, ImagerieList, FacturesList } from '../../
 import { Backdrop, FocusableCard, MedicalTextarea } from '../../components/FocusMode'
 import PreparationChecklist from '../../components/consultation/PreparationChecklist'
 import FsePatientTab from '../../components/cnss/FsePatientTab' // [FSE TAB]
+import SendReminderButton from '../../components/SendReminderButton'
 
 // --- Mock Data ---
 const MOCK_ALERTS = [
@@ -1220,9 +1221,15 @@ export default function PatientWorkspace() {
             </div>
             <div className="flex items-center gap-3 flex-wrap mt-1 text-[12.5px] text-slate-500">
               {patient.telephone && (
-                <span className="inline-flex items-center gap-1">
-                  <Phone className="w-3.5 h-3.5 text-slate-400" />
-                  {patient.telephone}
+                <span className="inline-flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-slate-400" />
+                    {patient.telephone}
+                  </span>
+                  <SendReminderButton
+                    patientName={`${patient.prenom || ''} ${patient.nom || ''}`.trim()}
+                    phoneNumber={patient.telephone}
+                  />
                 </span>
               )}
               {patient.cin && (

@@ -1,14 +1,16 @@
-import React, { useState } from 'react'
-import { FileText, Download, RefreshCw, AlertCircle, Info, CheckCircle2 } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { FileText, Download, RefreshCw, AlertCircle, Info, CheckCircle2, MessageCircle, Share2, Layers } from 'lucide-react'
 import toast, { Toaster } from 'react-hot-toast'
 import { generateFSE, sanitizeCIN, isValidCIN, sanitizeNumericOnly, validateFseData } from './generateFSE'
+import { sendFseViaWhatsApp } from '../../lib/whatsappService'
+import { supabase } from '../../lib/supabase'
 
 /**
- * FsePatientTab — FSE CNSS generator wired to a real patient from the DB.
+ * FsePatientTab — FSE CNSS generator wired to live Supabase DB & patient state.
  *
  * Props:
- *   patient  — patient object from getPatientById (fields: nom, prenom, cin,
- *              numero_cnss, date_naissance, sexe, adresse, ville, mutuelle)
+ *   patient  — patient object from getPatientById (fields: id, nom, prenom, cin,
+ *              numero_cnss, date_naissance, sexe, adresse, ville, mutuelle, telephone)
  *   profile  — doctor profile from AppContext (fields: nom_complet, cabinet_id,
  *              cabinets?.nom, etc.)
  */
@@ -16,12 +18,57 @@ export default function FsePatientTab({ patient, profile }) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState(null)
   const [isDebugMode, setIsDebugMode] = useState(false)
+  const [includeAnnex, setIncludeAnnex] = useState(false)
   const [consultPrice, setConsultPrice] = useState('150')
   const [piecesJointes, setPiecesJointes] = useState('1')
+  
+  // Live Supabase database binding state
+  const [dbConsultations, setDbConsultations] = useState([])
+  const [selectedConsultId, setSelectedConsultId] = useState('')
+  const [isDbLoading, setIsDbLoading] = useState(false)
 
   const cleanCin = sanitizeCIN(patient?.cin)
   const cinValid = isValidCIN(cleanCin)
   const cleanCnss = sanitizeNumericOnly(patient?.numero_cnss || patient?.immatriculation)
+  const patientPhone = patient?.telephone || patient?.phone || ''
+
+  // --- Live Supabase DB Query for Patient Consultations & Billing ---
+  useEffect(() => {
+    if (!patient?.id) return
+
+    const loadLiveConsultations = async () => {
+      setIsDbLoading(true)
+      try {
+        const { data, error } = await supabase
+          .from('consultations')
+          .select('*')
+          .eq('patient_id', patient.id)
+          .order('date_consult', { ascending: false })
+
+        if (!error && data && data.length > 0) {
+          setDbConsultations(data)
+          setSelectedConsultId(data[0].id)
+          if (data[0].montant) setConsultPrice(String(data[0].montant))
+        }
+      } catch (err) {
+        console.warn('[FsePatientTab] Erreur chargement consultations Supabase :', err)
+      } finally {
+        setIsDbLoading(false)
+      }
+    }
+
+    loadLiveConsultations()
+  }, [patient?.id])
+
+  // --- Handle consultation change ---
+  const handleSelectConsultation = (e) => {
+    const cId = e.target.value
+    setSelectedConsultId(cId)
+    const consult = dbConsultations.find((c) => c.id === cId)
+    if (consult) {
+      if (consult.montant) setConsultPrice(String(consult.montant))
+    }
+  }
 
   // --- Missing or invalid field detection ---
   const missingFields = []
@@ -33,6 +80,7 @@ export default function FsePatientTab({ patient, profile }) {
 
   // --- Map DB patient → generateFSE format ---
   const buildPatientObj = () => ({
+    id: patient?.id,
     first_name: patient?.prenom || '',
     last_name: patient?.nom || '',
     nomComplet: `${patient?.prenom || ''} ${patient?.nom || ''}`.trim(),
@@ -45,17 +93,18 @@ export default function FsePatientTab({ patient, profile }) {
     sexe: patient?.sexe || 'M',
     address: patient?.adresse || patient?.ville || '',
     adresse: patient?.adresse || patient?.ville || '',
+    telephone: patientPhone,
     montant: Number(consultPrice) || 150,
     piecesJointes: Number(piecesJointes) || 1,
   })
 
   // --- Map doctor profile → generateFSE format ---
   const buildDoctorObj = () => ({
-    name: profile?.nom_complet || 'Dr. Médecin',
+    name: profile?.nom_complet || 'Dr. Médecin Traitant',
     specialty: profile?.specialty || profile?.specialite || 'Médecine Générale',
     inpe_code: sanitizeNumericOnly(profile?.inpe_code || profile?.inpe),
-    city: profile?.cabinets?.ville || profile?.ville || '',
-    etablissement: profile?.cabinets?.nom || profile?.cabinet_nom || '',
+    city: profile?.cabinets?.ville || profile?.ville || 'Casablanca',
+    etablissement: profile?.cabinets?.nom || profile?.cabinet_nom || 'Cabinet Médical',
   })
 
   const handleGenerate = async () => {
@@ -64,15 +113,28 @@ export default function FsePatientTab({ patient, profile }) {
     try {
       const patientObj = buildPatientObj()
       const doctorObj = buildDoctorObj()
+      const selectedConsult = dbConsultations.find((c) => c.id === selectedConsultId)
+
       const consultObj = {
         price: consultPrice,
         pieces_jointes: piecesJointes,
-        date: new Date().toLocaleDateString('fr-FR'),
+        date: selectedConsult?.date_consult
+          ? new Date(selectedConsult.date_consult).toLocaleDateString('fr-FR')
+          : new Date().toLocaleDateString('fr-FR'),
+        dossier_numero: selectedConsult?.id ? `DOS-${String(selectedConsult.id).substring(0, 6).toUpperCase()}` : '',
+        acts: selectedConsult?.actes || [
+          { date: new Date().toLocaleDateString('fr-FR'), code: 'C', label: 'Consultation de médecine générale', qte: 1, montant: consultPrice }
+        ],
       }
-      const url = await generateFSE(patientObj, doctorObj, consultObj, { debug: isDebugMode })
+
+      const url = await generateFSE(patientObj, doctorObj, consultObj, {
+        debug: isDebugMode,
+        includeAnnex: includeAnnex || Number(piecesJointes) > 1,
+      })
+
       if (url) {
         setGeneratedPdfUrl(url)
-        toast.success('FSE téléchargée avec succès')
+        toast.success('FSE générée avec succès !')
       }
     } catch (err) {
       console.error('Erreur génération FSE :', err)
@@ -83,23 +145,67 @@ export default function FsePatientTab({ patient, profile }) {
     }
   }
 
+  // --- Direct 1-Click WhatsApp Delivery ---
+  const handleShareWhatsApp = async () => {
+    if (!patientPhone) {
+      toast.error('Aucun numéro de téléphone valide enregistré pour ce patient.')
+      return
+    }
+
+    const patientName = `${patient?.prenom || ''} ${patient?.nom || ''}`.trim()
+    toast.loading('Préparation de l\'envoi WhatsApp...', { id: 'wa-fse' })
+
+    try {
+      const res = await sendFseViaWhatsApp({
+        patientPhone,
+        patientName,
+        documentUrl: generatedPdfUrl,
+        montantTotal: consultPrice,
+      })
+
+      if (res?.success) {
+        toast.success('Partage WhatsApp prêt !', { id: 'wa-fse' })
+      } else {
+        toast.error('Erreur lors du partage WhatsApp.', { id: 'wa-fse' })
+      }
+    } catch (err) {
+      console.error('Erreur WhatsApp :', err)
+      toast.error('Échec de l\'envoi WhatsApp.', { id: 'wa-fse' })
+    }
+  }
+
   return (
     <div className="space-y-5">
       <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+      
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
           <h2 className="text-[16px] font-bold text-slate-900 flex items-center gap-2">
             <FileText className="w-4 h-4 text-blue-600" />
-            Feuille de Soins CNSS
+            Feuille de Soins CNSS (FSE)
           </h2>
           <p className="text-[13px] text-slate-500 mt-0.5">
-            Génération automatique sur modèle officiel (FSE_CNSS) pour ce patient
+            Génération automatique sur modèle officiel CNSS & binding direct avec la base de données
           </p>
         </div>
 
-        {/* Debug toggle + Generate button */}
-        <div className="flex items-center gap-3 flex-shrink-0">
+        {/* Action Controls */}
+        <div className="flex items-center gap-2.5 flex-wrap flex-shrink-0">
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer select-none bg-gray-50 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition">
+            <input
+              type="checkbox"
+              checked={includeAnnex}
+              disabled={isGenerating}
+              onChange={(e) => setIncludeAnnex(e.target.checked)}
+              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="flex items-center gap-1">
+              <Layers size={13} className="text-slate-500" />
+              Feuille d'Annexe
+            </span>
+          </label>
+
           <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer select-none bg-gray-50 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-100 transition">
             <input
               type="checkbox"
@@ -118,7 +224,7 @@ export default function FsePatientTab({ patient, profile }) {
             type="button"
             onClick={handleGenerate}
             disabled={isGenerating}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {isGenerating ? (
               <RefreshCw size={15} className="animate-spin" />
@@ -126,6 +232,17 @@ export default function FsePatientTab({ patient, profile }) {
               <Download size={15} />
             )}
             <span>{isGenerating ? 'Génération...' : 'Générer PDF FSE'}</span>
+          </button>
+
+          {/* 1-Click WhatsApp Share Button */}
+          <button
+            type="button"
+            onClick={handleShareWhatsApp}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+            title="Envoyer ou partager la Feuille de Soins sur WhatsApp"
+          >
+            <MessageCircle size={15} />
+            <span>Envoyer WhatsApp</span>
           </button>
         </div>
       </div>
@@ -137,7 +254,7 @@ export default function FsePatientTab({ patient, profile }) {
           <div className="text-[13px] text-amber-800">
             <span className="font-bold">Informations manquantes :</span>{' '}
             {missingFields.join(', ')}. Le PDF sera généré mais certains champs seront vides.
-            Complétez le dossier patient pour un résultat optimal.
+            Complétez le dossier patient dans la base de données.
           </div>
         </div>
       )}
@@ -155,11 +272,18 @@ export default function FsePatientTab({ patient, profile }) {
 
       {/* Patient Data Preview */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-        <div className="flex items-center gap-2 mb-1">
-          <Info size={15} className="text-slate-500" />
-          <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-            Données du patient pour l'FSE
-          </span>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <Info size={15} className="text-slate-500" />
+            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+              Données patient en direct (Supabase)
+            </span>
+          </div>
+          {patientPhone && (
+            <span className="text-xs font-semibold text-emerald-700 bg-emerald-100/80 px-2.5 py-0.5 rounded-md flex items-center gap-1">
+              <MessageCircle size={12} /> {patientPhone}
+            </span>
+          )}
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 text-xs">
@@ -182,15 +306,36 @@ export default function FsePatientTab({ patient, profile }) {
         </div>
       </div>
 
-      {/* Consultation fields (editable for this FSE) */}
+      {/* Consultation Selector & Params */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
         <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
-          Paramètres de la consultation
+          Paramètres de consultation & Facturation
         </span>
+
+        {/* Live Consultation Selector */}
+        {dbConsultations.length > 0 && (
+          <div className="mb-3">
+            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">
+              Sélectionner la consultation (Supabase)
+            </label>
+            <select
+              value={selectedConsultId}
+              onChange={handleSelectConsultation}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50"
+            >
+              {dbConsultations.map((c) => (
+                <option key={c.id} value={c.id}>
+                  Consultation du {new Date(c.date_consult || c.created_at).toLocaleDateString('fr-FR')} — Montant: {c.montant || 150} MAD ({c.statut || 'Terminée'})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">
-              Montant (MAD)
+              Montant des soins (MAD)
             </label>
             <input
               type="number"
@@ -223,20 +368,32 @@ export default function FsePatientTab({ patient, profile }) {
       {generatedPdfUrl && (
         <div className="pt-2">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-bold text-gray-700">Aperçu de la Feuille de Soins générée :</p>
-            <a
-              href={generatedPdfUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-blue-600 underline font-semibold"
-            >
-              Ouvrir en plein écran
-            </a>
+            <p className="text-xs font-bold text-gray-700 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              Aperçu de la Feuille de Soins générée :
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleShareWhatsApp}
+                className="text-xs text-emerald-700 font-bold hover:underline flex items-center gap-1"
+              >
+                <MessageCircle size={13} /> Partager via WhatsApp
+              </button>
+              <a
+                href={generatedPdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-blue-600 underline font-semibold"
+              >
+                Ouvrir en plein écran
+              </a>
+            </div>
           </div>
           <iframe
             src={generatedPdfUrl}
             title="CNSS FSE Aperçu"
-            className="w-full h-[520px] rounded-xl border border-gray-300 shadow-inner"
+            className="w-full h-[540px] rounded-xl border border-gray-300 shadow-inner"
           />
         </div>
       )}
@@ -249,7 +406,7 @@ export default function FsePatientTab({ patient, profile }) {
 function DataCell({ label, value, mono = false, highlight }) {
   const valueClass = [
     mono ? 'font-mono font-bold' : 'font-medium',
-    highlight === 'blue' ? 'text-blue-700' : highlight === 'emerald' ? 'text-emerald-700' : 'text-slate-700',
+    highlight === 'blue' ? 'text-blue-700' : highlight === 'emerald' ? 'text-emerald-700' : highlight === 'rose' ? 'text-rose-700' : 'text-slate-700',
     'block text-xs',
   ].join(' ')
 
@@ -267,14 +424,11 @@ function DataCell({ label, value, mono = false, highlight }) {
  */
 function formatDateForFSE(dateStr) {
   if (!dateStr) return ''
-  // Already in DDMMYYYY format (8 digits, no separators)
   if (/^\d{8}$/.test(dateStr)) return dateStr
-  // ISO: YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-    const [y, m, d] = dateStr.split('-')
+    const [y, m, d] = dateStr.split('T')[0].split('-')
     return `${d}${m}${y}`
   }
-  // DD/MM/YYYY
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
     return dateStr.replace(/\//g, '')
   }

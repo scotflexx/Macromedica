@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { appendFSEAnnexPage } from './generateFSEAnnex.js';
 
 const scaleX = 841.89 / 1024;
 const scaleY = 595.28 / 724;
@@ -585,6 +586,17 @@ export const generateFSE = async (dbPatient = {}, dbDoctor = {}, dbConsultation 
     if (consultDate8) {
       drawArrayOfBoxes(consultDate8, CNSS_EXACT_MAP.date_bas_gauche, 8.0);
       drawArrayOfBoxes(consultDate8, CNSS_EXACT_MAP.date_bas_droite, 8.0);
+    }
+
+    // 5.5 Check for multi-page Annex (if acts > 1 or annex requested)
+    const hasMultipleActs =
+      (dbConsultation?.acts && dbConsultation.acts.length > 1) ||
+      (dbConsultation?.items && dbConsultation.items.length > 1) ||
+      Number(piecesCount) > 1;
+    const forceAnnex = options.includeAnnex || options.annex;
+
+    if (hasMultipleActs || forceAnnex) {
+      await appendFSEAnnexPage(finalDoc, sanitizedPatient, sanitizedDoctor, dbConsultation);
     }
 
     // 6. Output PDF

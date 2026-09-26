@@ -7,10 +7,11 @@ import { dh, fmtDateLong, joursRetard } from './format';
 import { Card, StatutBadge } from './ui';
 import Badge from '../common/Badge';
 import Button from '../common/Button';
-import { X, Printer, CreditCard, AlertCircle, ArrowLeft } from 'lucide-react';
+import { X, Printer, CreditCard, AlertCircle, ArrowLeft, FileText, MessageCircle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useFacturePayment } from './EncaisserModal';
 import { PaymentBody, PaymentFooter, PaymentDone } from '../common/PaymentModal';
+import { sendFseViaWhatsApp } from '../../lib/whatsappService';
 
 const LABEL = 'text-xs font-semibold text-slate-400 uppercase tracking-wide';
 
@@ -141,10 +142,24 @@ export function FactureDetail({ facture, praticienNom, onClose, onPrint, onEncai
       </div>
 
       {/* Footer sits right under the content */}
-      <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-6 py-4 print:hidden">
-        <Button variant="secondary" onClick={onPrint}>
-          <Printer className="h-4 w-4" /> Imprimer
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-6 py-4 print:hidden">
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={onPrint}>
+            <Printer className="h-4 w-4" /> Imprimer
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              sendFseViaWhatsApp({
+                patientPhone: '',
+                patientName: facture.patientNom,
+                montantTotal: facture.montant,
+              });
+            }}
+          >
+            <MessageCircle className="h-4 w-4 text-emerald-600" /> WhatsApp
+          </Button>
+        </div>
         {reste > 0 && (
           <Button variant="success" onClick={onEncaisser}>
             <CreditCard className="h-4 w-4" /> Encaisser
